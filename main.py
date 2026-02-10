@@ -1,38 +1,70 @@
 import discord
 from discord.ext import commands, tasks
+import random
+import yt_dlp
 import datetime
-from collections import deque
+import asyncio
+from collections import deque  # 대기열을 위한 deque 추가
 
 # =====================
 # 설정 부분
 # =====================
 TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.Guo_qF.Ihas_V1gHLPbd85Tb5-Qz-N0szG7O2wK7Xdov4" 
-CHANNEL_ID = None  # 실제 채널 ID(숫자)를 입력해야 작동합니다.
+CHANNEL_ID = None
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-# 슬래시 커맨드 사용을 위해 Bot 클래스를 상속받거나 tree를 직접 사용합니다.
-class MyBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-    async def setup_hook(self):
-        # 봇이 실행될 때 슬래시 커맨드를 디스코드 서버에 등록합니다.
-        await self.tree.sync()
-        print("✅ 슬래시 커맨드 동기화 완료!")
+# 데이터 저장 딕셔너리
+user_fortune_data = {}
+user_match_data = {}
+user_money = {}
+user_daily_pay = {}
+user_lotto_count = {}
+user_inventory = {}
 
-bot = MyBot()
-
-# 데이터 저장소 및 옵션들 (기존 코드 유지)
+# 노래 대기열 저장소 (서버별 관리)
 queues = {}
-FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
+
+# YDL 및 FFMPEG 옵션
+FFMPEG_OPTIONS = {
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
+    'options': '-vn',
+}
+
+YDL_OPTIONS = {
+    'format': 'bestaudio/best',
+    'noplaylist': True,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+}
 
 # =====================
-# 보조 함수 (기존 로직 유지)
+# 보조 함수 (대기열 관리) - 수정됨
+# =====================
+def check_queue(ctx):
+    """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
+    if ctx.guild.id in queues and queues[ctx.guild.id]:
+        next_song = queues[ctx.guild.id].popleft()
+        
+        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
+        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
+        ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
+        
+        bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
+    else:
+        if ctx.guild.id in queues:
+            del queues[ctx.guild.id]
+
+# =====================
+# 유틸리티 함수
 # =====================
 def now_kst():
+    # 한국 시간(UTC+9) 계산
     return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 # =====================
@@ -41,7 +73,6 @@ def now_kst():
 @bot.event
 async def on_ready():
     print(f"✅ 봇 로그인 완료: {bot.user}")
-    # 스케줄러 시작
     if not morning.is_running():
         morning.start()
     if not lunch.is_running():
@@ -50,7 +81,7 @@ async def on_ready():
         dinner.start()
 
 # =====================
-# 자동 인사 스케줄러 (수정 없음)
+# 자동 인사 스케줄러
 # =====================
 last_sent = {"morning": None, "lunch": None, "dinner": None}
 
@@ -65,15 +96,15 @@ async def send_once(key, hour, minute, message):
 
 @tasks.loop(minutes=1)
 async def morning():
-    await send_once("morning", 6, 0, "@everyone 기상! 기상! ٩(◕ᗜ◕)و 아침밥 드세요!☀️")
+    await send_once("morning", 6, 0, "@everyone 기상! 기상! ٩(◕ᗜ◕)و 햇살이 똑똑똑~ 오늘 하루도 귀엽게 시작해 보자구요! 파이팅!! 아, 아침밥 드세요!☀️")
 
 @tasks.loop(minutes=1)
 async def lunch():
-    await send_once("lunch", 12, 0, "@everyone 꼬르륵.. 맛있는 점심 드세요! 🍚✨")
+    await send_once("lunch", 12, 0, "@everyone 꼬르륵.. 배꼽시계가 울려요! 맛있는 거 먹고 배 뚠뚠하게 채우기! 🍚✨")
 
 @tasks.loop(minutes=1)
 async def dinner():
-    await send_once("dinner", 19, 0, "@everyone 오늘 하루도 고생해따! 맛있는 저녁 드세요! 🛌")
+    await send_once("dinner", 19, 0, "@everyone 오늘 하루도 갓생 사느라 고생해따! 이제 침대랑 한 몸이 되어서 뒹굴뒹굴할 시간! 그 전에~ 맛있는 저녁은 꼬옥! 드세요! 🛌")
 
 # =====================
 # 명령어: 오늘의운세 (슬래시 커맨드 버전)
