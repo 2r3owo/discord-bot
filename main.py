@@ -9,7 +9,7 @@ from collections import deque  # 대기열을 위한 deque 추가
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.G_u4V4.MLfjJ-ZkQjYUKzvfATuhdJYRyN9WfALfzaqz-o" 
+TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.GPd1UU.PS8pdeY_ZBXO3BJYyqi9Ft89ADKYo6AmlVs9w0" 
 CHANNEL_ID = None
 
 intents = discord.Intents.default()
@@ -44,22 +44,19 @@ YDL_OPTIONS = {
 }
 
 # =====================
-# 보조 함수 (대기열 관리)
+# 보조 함수 (대기열 관리) - 수정됨
 # =====================
 def check_queue(ctx):
     """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
     if ctx.guild.id in queues and queues[ctx.guild.id]:
         next_song = queues[ctx.guild.id].popleft()
         
-        # 다음 곡 재생
-        # 만약 특정 ffmpeg.exe 경로가 필요하면 executable 파라미터를 추가하세요.
-        source = discord.FFmpegOpusAudio(next_song['url'], **FFMPEG_OPTIONS)
+        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
+        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
         ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
         
-        # (선택 사항) 다음 곡 재생 알림을 텍스트 채널에 보낼 수 있습니다.
         bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
     else:
-        # 더 이상 재생할 곡이 없으면 대기열 삭제
         if ctx.guild.id in queues:
             del queues[ctx.guild.id]
 
@@ -479,7 +476,7 @@ async def 도박(ctx, bet: int):
         user_money[user_id] -= bet
         await ctx.send(f"💸 **탕진잼...** 💸\n{ctx.author.mention}님, 배팅한 **{bet:,}원**이 공중분해 되었습니다. \n💰 현재 잔고: {user_money[user_id]:,}원")
 
- # =====================
+# =====================
 # 음성 및 노래 재생 관련
 # =====================
 
@@ -521,7 +518,6 @@ async def 야재생해(ctx, *, search):
 
     async with ctx.typing():
         try:
-            # 새로운 재생 시작 시 기존 대기열 비우기
             queues[ctx.guild.id] = deque()
             
             loop = asyncio.get_event_loop()
@@ -535,8 +531,8 @@ async def 야재생해(ctx, *, search):
             if ctx.voice_client.is_playing():
                 ctx.voice_client.stop()
             
-            source = await discord.FFmpegOpusAudio.from_probe(url, **FFMPEG_OPTIONS)
-            # after=lambda e: check_queue(ctx) 가 핵심입니다.
+            # [수정됨] executable="ffmpeg" 추가
+            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
             ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
             await ctx.send(f"🎶 즉시 재생 시작: **{title}**")
             
@@ -562,17 +558,15 @@ async def 야기다려(ctx, *, search):
             url = info['url']
             title = info['title']
 
-            # 대기열 초기화 확인
             if ctx.guild.id not in queues:
                 queues[ctx.guild.id] = deque()
 
             if ctx.voice_client.is_playing():
-                # 이미 노래가 나오고 있다면 대기열에 추가
                 queues[ctx.guild.id].append({'url': url, 'title': title})
                 await ctx.send(f"✅ 대기열에 추가됨: **{title}**")
             else:
-                # 노래가 없다면 즉시 재생
-                source = await discord.FFmpegOpusAudio.from_probe(url, **FFMPEG_OPTIONS)
+                # [수정됨] executable="ffmpeg" 추가
+                source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
                 ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
                 await ctx.send(f"🎶 재생 시작: **{title}**")
 
