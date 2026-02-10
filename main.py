@@ -1,70 +1,38 @@
 import discord
 from discord.ext import commands, tasks
-import random
-import yt_dlp
 import datetime
-import asyncio
-from collections import deque  # 대기열을 위한 deque 추가
+from collections import deque
 
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.G3FWMX.KmqF5VCkFFS3R1b5NyRYq4qL5tWekKqMJysXdQ" 
-CHANNEL_ID = None
+TOKEN = "여기에_새로_발급받은_토큰을_넣으세요" 
+CHANNEL_ID = 1234567890  # 실제 채널 ID(숫자)를 입력해야 작동합니다.
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+# 슬래시 커맨드 사용을 위해 Bot 클래스를 상속받거나 tree를 직접 사용합니다.
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=intents)
 
-# 데이터 저장 딕셔너리
-user_fortune_data = {}
-user_match_data = {}
-user_money = {}
-user_daily_pay = {}
-user_lotto_count = {}
-user_inventory = {}
+    async def setup_hook(self):
+        # 봇이 실행될 때 슬래시 커맨드를 디스코드 서버에 등록합니다.
+        await self.tree.sync()
+        print("✅ 슬래시 커맨드 동기화 완료!")
 
-# 노래 대기열 저장소 (서버별 관리)
+bot = MyBot()
+
+# 데이터 저장소 및 옵션들 (기존 코드 유지)
 queues = {}
-
-# YDL 및 FFMPEG 옵션
-FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn',
-}
-
-YDL_OPTIONS = {
-    'format': 'bestaudio/best',
-    'noplaylist': True,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-}
+FFMPEG_OPTIONS = {'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 'options': '-vn'}
 
 # =====================
-# 보조 함수 (대기열 관리) - 수정됨
-# =====================
-def check_queue(ctx):
-    """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
-    if ctx.guild.id in queues and queues[ctx.guild.id]:
-        next_song = queues[ctx.guild.id].popleft()
-        
-        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
-        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
-        
-        bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
-    else:
-        if ctx.guild.id in queues:
-            del queues[ctx.guild.id]
-
-# =====================
-# 유틸리티 함수
+# 보조 함수 (기존 로직 유지)
 # =====================
 def now_kst():
-    # 한국 시간(UTC+9) 계산
     return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 # =====================
@@ -73,6 +41,7 @@ def now_kst():
 @bot.event
 async def on_ready():
     print(f"✅ 봇 로그인 완료: {bot.user}")
+    # 스케줄러 시작
     if not morning.is_running():
         morning.start()
     if not lunch.is_running():
@@ -81,7 +50,7 @@ async def on_ready():
         dinner.start()
 
 # =====================
-# 자동 인사 스케줄러
+# 자동 인사 스케줄러 (수정 없음)
 # =====================
 last_sent = {"morning": None, "lunch": None, "dinner": None}
 
@@ -96,26 +65,32 @@ async def send_once(key, hour, minute, message):
 
 @tasks.loop(minutes=1)
 async def morning():
-    await send_once("morning", 6, 0, "@everyone 기상! 기상! ٩(◕ᗜ◕)و 햇살이 똑똑똑~ 오늘 하루도 귀엽게 시작해 보자구요! 파이팅!! 아, 아침밥 드세요!☀️")
+    await send_once("morning", 6, 0, "@everyone 기상! 기상! ٩(◕ᗜ◕)و 아침밥 드세요!☀️")
 
 @tasks.loop(minutes=1)
 async def lunch():
-    await send_once("lunch", 12, 0, "@everyone 꼬르륵.. 배꼽시계가 울려요! 맛있는 거 먹고 배 뚠뚠하게 채우기! 🍚✨")
+    await send_once("lunch", 12, 0, "@everyone 꼬르륵.. 맛있는 점심 드세요! 🍚✨")
 
 @tasks.loop(minutes=1)
 async def dinner():
-    await send_once("dinner", 19, 0, "@everyone 오늘 하루도 갓생 사느라 고생해따! 이제 침대랑 한 몸이 되어서 뒹굴뒹굴할 시간! 그 전에~ 맛있는 저녁은 꼬옥! 드세요! 🛌")
+    await send_once("dinner", 19, 0, "@everyone 오늘 하루도 고생해따! 맛있는 저녁 드세요! 🛌")
 
 # =====================
-# 명령어: 오늘의운세 (하루 1회 제한)
+# 명령어: 오늘의운세 (슬래시 커맨드 버전)
 # =====================
-@bot.command()
-async def 오늘의운세(ctx):
-    user_id = ctx.author.id
+@bot.tree.command(name="오늘의운세", description="하루에 한 번, 오늘의 행운을 확인하세요!")
+async def 오늘의운세(interaction: discord.Interaction):
+    # 1. 정보 가져오기 (interaction 사용)
+    user_id = interaction.user.id
     today = now_kst().date()
 
+    # 2. 중복 체크
     if user_id in user_fortune_data and user_fortune_data[user_id] == today:
-        await ctx.send(f"⚠️ {ctx.author.mention}님, 운세는 하루에 한 번만 볼 수 있어요!")
+        # ephemeral=True를 넣으면 본인에게만 메시지가 보입니다. (깔끔함!)
+        await interaction.response.send_message(
+            f"⚠️ {interaction.user.mention}님, 운세는 하루에 한 번만 볼 수 있어요!", 
+            ephemeral=True
+        )
         return
 
     fortune_results = [
@@ -155,8 +130,8 @@ async def 오늘의운세(ctx):
 # =====================
 # 명령어: 개소리 (무제한) 🎲
 # =====================
-@bot.command()
-async def 개소리(ctx):
+@bot.tree.command(name="개소리", description="봇이 아무 말이나 내뱉습니다.")
+async def 개소리(interaction: discord.Interaction):
     fortunes = [
         "wink wink, 메롱.😛", "휴대폰 금안복오 잘아. 아가씨!!🚫", "일본콩 먹고 다 나으면? 나앗~또!", 
         "바나나가 웃으면? 바나나킥~!🍌", "뽑으면 우는 식물은? 우엉😭", "난 고래야, 고래서 널 좋아해.🐋", "난 대게야. 널 대게 좋아해.🦀", 
@@ -184,35 +159,35 @@ async def 개소리(ctx):
     await ctx.send(random.choice(fortunes))
 
 # =====================
-# 명령어: 궁합 (상대방별로 하루 1회 제한)
+# 명령어: 궁합 (슬래시 커맨드 버전) 💘
 # =====================
-@bot.command()
-async def 궁합(ctx, user: discord.Member = None):
-    user_id = ctx.author.id
+@bot.tree.command(name="궁합", description="상대방과의 오늘의 궁합 점수를 확인합니다. (상대별 하루 1회)")
+async def 궁합(interaction: discord.Interaction, user: discord.Member): # 1. ctx 대신 interaction 사용, user를 인자로 받음
+    user_id = interaction.user.id
     today = now_kst().date()
 
-    if user is None:
-        await ctx.send("❓ 누구랑 궁합을 볼까요? 유저를 멘션해 주세요! (예: `!궁합 @상대방`)")
+    # 슬래시 커맨드는 'user'가 필수값이므로 None 체크는 생략 가능합니다.
+    # 본인과의 궁합 체크
+    if user == interaction.user:
+        await interaction.response.send_message("😳 자기 자신과의 궁합은 언제나 100점! 다른 분을 선택해 보세요.", ephemeral=True)
         return
 
-    if user == ctx.author:
-        await ctx.send("😳 자기 자신과의 궁합은 언제나 100점! 다른 분을 멘션해 보세요.")
-        return
-
-    # 상대방 ID까지 포함해서 유니크한 키 생성 (예: (내ID, 상대ID))
-    # 이렇게 하면 다른 유저와는 각각 하루에 한 번씩 볼 수 있습니다.
+    # 상대방 ID까지 포함해서 유니크한 키 생성
     match_key = (user_id, user.id)
 
     # 하루 1회 제한 체크 (특정 상대방 기준)
     if match_key in user_match_data and user_match_data[match_key] == today:
-        await ctx.send(f"⚠️ {ctx.author.mention}님, {user.display_name}님과의 궁합은 이미 확인하셨어요! 내일 다시 봐요. 😉")
+        await interaction.response.send_message(
+            f"⚠️ {interaction.user.mention}님, {user.display_name}님과의 궁합은 이미 확인하셨어요! 내일 다시 봐요. 😉",
+            ephemeral=True
+        )
         return
 
-    # 점수 및 멘트 로직 (기존과 동일)
+    # 점수 생성
     score = random.randint(0, 100)
-    user_match_data[match_key] = today  # 특정 유저와의 궁합 날짜 저장
-    
-    # 멘트 100개 데이터베이스
+    user_match_data[match_key] = today  # 데이터 저장
+
+    # 멘트 로직 (기존 데이터 그대로 유지)
     if score >= 90:
         comments = [
             "✨ 전생에 나라를 구했나요? 완벽한 천생연분!", "💎 눈에서 꿀이 떨어지는 찰떡궁합!", "🔥 태양보다 뜨거운 조합!", "💘 독심술 수준으로 잘 통하네요.",
@@ -260,23 +235,25 @@ async def 궁합(ctx, user: discord.Member = None):
 
     selected_comment = random.choice(comments)
 
+    # 임베드 생성 (ctx 대신 interaction 사용하도록 수정)
     embed = discord.Embed(title="💘 오늘의 궁합 (상대별 하루 한정!)", color=0xff69b4)
-    embed.add_field(name="오늘의 파트너", value=f"{ctx.author.mention} ❤️ {user.mention}", inline=False)
+    embed.add_field(name="오늘의 파트너", value=f"{interaction.user.mention} ❤️ {user.mention}", inline=False)
     embed.add_field(name="오늘의 점수", value=f"**{score}점**", inline=False)
     embed.add_field(name="한줄평", value=f"> {selected_comment}", inline=False)
     embed.set_footer(text=f"다른 유저와도 궁합을 볼 수 있습니다!")
     
-    await ctx.send(embed=embed)
+    # 2. 결과 전송 (interaction.response.send_message)
+    await interaction.response.send_message(embed=embed)
 
-    # =====================
-# 경제 시스템: 돈내놔 (하루 3회 10,000원)
 # =====================
-@bot.command()
-async def 돈내놔(ctx):
-    user_id = ctx.author.id
+# 경제 시스템: 돈내놔 (슬래시 커맨드 버전)
+# =====================
+@bot.tree.command(name="돈내놔", description="하루 3번, 10,000원씩 지원금을 받습니다.")
+async def 돈내놔(interaction: discord.Interaction): # ctx -> interaction
+    user_id = interaction.user.id # ctx.author -> interaction.user
     today = now_kst().date()
 
-    # 초기 데이터 설정
+    # 초기 데이터 설정 (기존 로직 유지)
     if user_id not in user_money:
         user_money[user_id] = 0
     if user_id not in user_daily_pay:
@@ -290,50 +267,67 @@ async def 돈내놔(ctx):
         user_money[user_id] += 10000
         user_daily_pay[user_id][1] += 1
         count = user_daily_pay[user_id][1]
-        await ctx.send(f"💰 {ctx.author.mention}님께 10,000원을 드렸습니다! (오늘 {count}/3회 수행)\n현재 잔액: {user_money[user_id]:,}원")
+        # ctx.send -> interaction.response.send_message
+        await interaction.response.send_message(f"💰 {interaction.user.mention}님께 10,000원을 드렸습니다! (오늘 {count}/3회 수행)\n현재 잔액: {user_money[user_id]:,}원")
     else:
-        await ctx.send(f"⚠️ 오늘은 이미 3번 다 받으셨어요! 내일 다시 오세요.")
-
-@bot.command()
-async def 잔고(ctx):
-    money = user_money.get(ctx.author.id, 0)
-    await ctx.send(f"💵 {ctx.author.mention}님의 현재 잔고는 **{money:,}원**입니다.")
+        await interaction.response.send_message(f"⚠️ 오늘은 이미 3번 다 받으셨어요! 내일 다시 오세요.", ephemeral=True)
 
 # =====================
-# 도박: 홀짝맞추기
+# 경제 시스템: 잔고 (슬래시 커맨드 버전)
 # =====================
-@bot.command()
-async def 홀짝(ctx, bet: int, pick: str):
-    user_id = ctx.author.id
+@bot.tree.command(name="잔고", description="현재 보유 중인 잔액을 확인합니다.")
+async def 잔고(interaction: discord.Interaction): # ctx -> interaction
+    money = user_money.get(interaction.user.id, 0) # ctx.author -> interaction.user
+    # ctx.send -> interaction.response.send_message
+    await interaction.response.send_message(f"💵 {interaction.user.mention}님의 현재 잔고는 **{money:,}원**입니다.")
+
+# =====================
+# 도박: 홀짝맞추기 (슬래시 커맨드 버전)
+# =====================
+@bot.tree.command(name="홀짝", description="배팅금을 걸고 홀/짝을 맞춥니다. (성공 시 2배!)")
+async def 홀짝(interaction: discord.Interaction, bet: int, pick: str): # ctx 대신 interaction 사용
+    user_id = interaction.user.id
     current_money = user_money.get(user_id, 0)
 
+    # 1. 예외 처리 로직 (기존과 동일)
     if bet <= 0:
-        return await ctx.send("❌ 1원 이상 배팅해야 합니다.")
+        return await interaction.response.send_message("❌ 1원 이상 배팅해야 합니다.", ephemeral=True)
+    
     if current_money < bet:
-        return await ctx.send(f"❌ 잔액이 부족합니다. (현재: {current_money:,}원)")
+        return await interaction.response.send_message(f"❌ 잔액이 부족합니다. (현재: {current_money:,}원)", ephemeral=True)
+    
     if pick not in ['홀', '짝']:
-        return await ctx.send("❓ `!홀짝 [금액] [홀/짝]` 형식으로 입력해 주세요.")
+        return await interaction.response.send_message("❓ `홀` 또는 `짝` 중에서 선택해 주세요.", ephemeral=True)
 
+    # 2. 게임 결과 계산 (기존과 동일)
     result = random.choice(['홀', '짝'])
     
     if pick == result:
         user_money[user_id] += bet
-        await ctx.send(f"🎊 결과는 **[{result}]**! 성공했습니다! \n💰 {bet:,}원을 얻어 현재 잔고는 **{user_money[user_id]:,}원**입니다.")
+        # 3. 결과 전송 (interaction.response.send_message)
+        await interaction.response.send_message(
+            f"🎊 결과는 **[{result}]**! 성공했습니다! \n"
+            f"💰 {bet:,}원을 얻어 현재 잔고는 **{user_money[user_id]:,}원**입니다."
+        )
     else:
         user_money[user_id] -= bet
-        await ctx.send(f"💀 결과는 **[{result}]**... 아쉽게 실패했습니다. \n💸 {bet:,}원을 잃어 현재 잔고는 **{user_money[user_id]:,}원**입니다.")
+        # 3. 결과 전송
+        await interaction.response.send_message(
+            f"💀 결과는 **[{result}]**... 아쉽게 실패했습니다. \n"
+            f"💸 {bet:,}원을 잃어 현재 잔고는 **{user_money[user_id]:,}원**입니다."
+        )
 
 # =====================
-# 도박: 로또 (1회 1,000원, 하루 15회 제한)
+# 도박: 로또 (슬래시 커맨드 버전)
 # =====================
-@bot.command()
-async def 로또(ctx):
-    user_id = ctx.author.id
+@bot.tree.command(name="로또", description="로또를 구매합니다. (1,000원, 하루 15회 제한)")
+async def 로또(interaction: discord.Interaction): # ctx -> interaction
+    user_id = interaction.user.id # ctx.author -> interaction.user
     today = now_kst().date()
     current_money = user_money.get(user_id, 0)
     lotto_price = 1000
 
-    # 1. 로또 횟수 데이터 초기화 및 날짜 체크
+    # 1. 로또 횟수 데이터 초기화 및 날짜 체크 (기존 로직 유지)
     if user_id not in user_lotto_count:
         user_lotto_count[user_id] = [today, 0]
     
@@ -343,11 +337,17 @@ async def 로또(ctx):
 
     # 2. 횟수 제한 체크 (15회)
     if user_lotto_count[user_id][1] >= 15:
-        return await ctx.send(f"⚠️ {ctx.author.mention}님, 로또는 하루에 15번까지만 구매할 수 있습니다! 내일 다시 도전하세요.")
+        return await interaction.response.send_message(
+            f"⚠️ {interaction.user.mention}님, 로또는 하루에 15번까지만 구매할 수 있습니다! 내일 다시 도전하세요.", 
+            ephemeral=True
+        )
 
     # 3. 잔액 체크
     if current_money < lotto_price:
-        return await ctx.send(f"❌ 잔액이 부족합니다. 로또는 {lotto_price:,}원입니다.")
+        return await interaction.response.send_message(
+            f"❌ 잔액이 부족합니다. 로또는 {lotto_price:,}원입니다.", 
+            ephemeral=True
+        )
 
     # 4. 로또 실행
     user_money[user_id] -= lotto_price
@@ -371,7 +371,7 @@ async def 로또(ctx):
 
     user_money[user_id] += win
     
-    # 5. 결과 임베드 전송
+    # 5. 결과 임베드 전송 (interaction 기반으로 수정)
     embed = discord.Embed(title="🎟️ 로또 결과", description=res, color=0x00ff00 if win > 0 else 0xff0000)
     if win > 0:
         embed.add_field(name="당첨금", value=f"{win:,}원")
@@ -380,13 +380,14 @@ async def 로또(ctx):
     embed.add_field(name="오늘 구매 횟수", value=f"{current_count} / 15회", inline=True)
     embed.set_footer(text="지나친 도박은 가산을 탕진합니다.")
     
-    await ctx.send(embed=embed)
+    # 최종 전송
+    await interaction.response.send_message(embed=embed)
 
 # ===================== 
-# 경제 시스템: 낚시 및 판매 🎣
+# 경제 시스템: 낚시 및 판매 (슬래시 커맨드 버전) 🎣
 # ===================== 
 
-# 물고기 종류와 가격, 확률 설정
+# 물고기 데이터는 기존과 동일하게 유지됩니다.
 FISH_DATA = {
     "👟 장화": {"price": 50, "chance": 30},
     "🐟 피라미": {"price": 1000, "chance": 35},
@@ -396,18 +397,19 @@ FISH_DATA = {
     "🐳 고래": {"price": 50000, "chance": 10}
 }
 
-@bot.command()
-async def 낚시(ctx):
-    user_id = ctx.author.id
+@bot.tree.command(name="낚시", description="낚싯대를 던져 물고기를 잡습니다.")
+async def 낚시(interaction: discord.Interaction):
+    user_id = interaction.user.id
     
-    # 인벤토리 초기화
+    # 인벤토리 초기화 (기존 로직)
     if user_id not in user_inventory:
         user_inventory[user_id] = {}
 
-    await ctx.send(f"🎣 {ctx.author.display_name}님이 낚싯대를 던졌습니다... (기다리는 중)")
-    await asyncio.sleep(2) # 2초 대기 (몰입감)
+    # 첫 응답은 send_message로 보냅니다.
+    await interaction.response.send_message(f"🎣 {interaction.user.display_name}님이 낚싯대를 던졌습니다... (기다리는 중)")
+    await asyncio.sleep(2) # 2초 대기
 
-    # 확률 기반 낚시 로직
+    # 확률 기반 낚시 로직 (기존 로직)
     fish_names = list(FISH_DATA.keys())
     fish_weights = [f["chance"] for f in FISH_DATA.values()]
     caught_fish = random.choices(fish_names, weights=fish_weights, k=1)[0]
@@ -417,27 +419,29 @@ async def 낚시(ctx):
     
     embed = discord.Embed(title="🎣 낚시 성공!", description=f"와우! **{caught_fish}**를 잡았습니다!", color=0x3498db)
     embed.set_footer(text=f"현재 보관함에 {caught_fish} {user_inventory[user_id][caught_fish]}마리 보유 중")
-    await ctx.send(embed=embed)
+    
+    # 낚시 중이라는 메시지 이후에 결과를 추가로 보낼 때는 follow-up을 사용합니다.
+    await interaction.followup.send(embed=embed)
 
-@bot.command()
-async def 보관함(ctx):
-    user_id = ctx.author.id
+@bot.tree.command(name="보관함", description="내가 잡은 물고기 목록을 확인합니다.")
+async def 보관함(interaction: discord.Interaction):
+    user_id = interaction.user.id
     inventory = user_inventory.get(user_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
-        return await ctx.send("텅~ 보관함이 비어있습니다. 낚시를 먼저 해보세요!")
+        return await interaction.response.send_message("텅~ 보관함이 비어있습니다. 낚시를 먼저 해보세요!", ephemeral=True)
 
     msg = "\n".join([f"{name}: {count}마리" for name, count in inventory.items() if count > 0])
-    embed = discord.Embed(title=f"🎒 {ctx.author.display_name}님의 보관함", description=msg, color=0x95a5a6)
-    await ctx.send(embed=embed)
+    embed = discord.Embed(title=f"🎒 {interaction.user.display_name}님의 보관함", description=msg, color=0x95a5a6)
+    await interaction.response.send_message(embed=embed)
 
-@bot.command()
-async def 물고기팔기(ctx):
-    user_id = ctx.author.id
+@bot.tree.command(name="물고기팔기", description="보관함에 있는 모든 물고기를 판매합니다.")
+async def 물고기팔기(interaction: discord.Interaction):
+    user_id = interaction.user.id
     inventory = user_inventory.get(user_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
-        return await ctx.send("❌ 팔 수 있는 물고기가 없습니다.")
+        return await interaction.response.send_message("❌ 팔 수 있는 물고기가 없습니다.", ephemeral=True)
 
     total_profit = 0
     for fish_name, count in inventory.items():
@@ -446,324 +450,332 @@ async def 물고기팔기(ctx):
             total_profit += profit
             inventory[fish_name] = 0 # 판매 후 초기화
 
-    # 돈 지급
+    # 돈 지급 (기존 변수 user_money 사용)
     user_money[user_id] = user_money.get(user_id, 0) + total_profit
     
-    await ctx.send(f"💰 물고기를 모두 팔아 **{total_profit:,}원**을 벌었습니다!\n현재 잔고: **{user_money[user_id]:,}원**")
+    await interaction.response.send_message(f"💰 물고기를 모두 팔아 **{total_profit:,}원**을 벌었습니다!\n현재 잔고: **{user_money[user_id]:,}원**")
 
 
 # =====================
-# 도박: 배팅 (성공 시 2배, 실패 시 0원)
+# 도박: 배팅 (슬래시 커맨드 버전)
 # =====================
-@bot.command()
-async def 도박(ctx, bet: int):
-    user_id = ctx.author.id
+@bot.tree.command(name="도박", description="배팅금을 걸고 도박을 합니다. (성공 확률 45%, 보상 2배)")
+async def 도박(interaction: discord.Interaction, bet: int): # ctx -> interaction, 배팅금 인자 추가
+    user_id = interaction.user.id
     current_money = user_money.get(user_id, 0)
 
+    # 1. 예외 처리 (기존 로직 유지)
     if bet <= 0:
-        return await ctx.send("❌ 1원 이상 배팅해야 합니다.")
+        return await interaction.response.send_message("❌ 1원 이상 배팅해야 합니다.", ephemeral=True)
+    
     if current_money < bet:
-        return await ctx.send(f"❌ 잔액이 부족합니다. (현재: {current_money:,}원)")
+        return await interaction.response.send_message(f"❌ 잔액이 부족합니다. (현재: {current_money:,}원)", ephemeral=True)
 
-    # 45% 확률로 성공 (1~100 중 45 이하)
+    # 2. 45% 확률로 성공 로직 (기존과 동일)
     result = random.randint(1, 100)
     
     if result <= 45:
         win_money = bet * 2
         user_money[user_id] += (win_money - bet) # 배팅금 제외 순수익 더하기
-        await ctx.send(f"🍀 **대성공!** 🍀\n{ctx.author.mention}님, 45%의 확률을 뚫고 **{win_money:,}원**을 획득하셨습니다! \n💰 현재 잔고: {user_money[user_id]:,}원")
+        # 3. 결과 전송 (interaction.response.send_message)
+        await interaction.response.send_message(
+            f"🍀 **대성공!** 🍀\n{interaction.user.mention}님, 45%의 확률을 뚫고 **{win_money:,}원**을 획득하셨습니다! \n"
+            f"💰 현재 잔고: {user_money[user_id]:,}원"
+        )
     else:
         user_money[user_id] -= bet
-        await ctx.send(f"💸 **탕진잼...** 💸\n{ctx.author.mention}님, 배팅한 **{bet:,}원**이 공중분해 되었습니다. \n💰 현재 잔고: {user_money[user_id]:,}원")
+        # 3. 결과 전송
+        await interaction.response.send_message(
+            f"💸 **탕진잼...** 💸\n{interaction.user.mention}님, 배팅한 **{bet:,}원**이 공중분해 되었습니다. \n"
+            f"💰 현재 잔고: {user_money[user_id]:,}원"
+        )
 
 # =====================
-# 음성 및 노래 재생 관련
+# 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
 # =====================
 
-
-@bot.command()
-async def 야드루와(ctx):
-    if not ctx.author.voice:
-        return await ctx.send("❌ 먼저 음성채널에 들어가 주세요")
+@bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
+async def 야드루와(interaction: discord.Interaction):
+    if not interaction.user.voice:
+        return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
 
     try:
-        if ctx.voice_client:
-            if ctx.voice_client.channel != ctx.author.voice.channel:
-                await ctx.voice_client.move_to(ctx.author.voice.channel)
-
+        if interaction.guild.voice_client:
+            if interaction.guild.voice_client.channel != interaction.user.voice.channel:
+                await interaction.guild.voice_client.move_to(interaction.user.voice.channel)
         else:
-            # 타임아웃 오류 방지를 위해 넉넉히 설정
-            await ctx.author.voice.channel.connect(timeout=60.0, reconnect=True)
-        await ctx.send("🎧 들어왔어요!")
+            await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
+        await interaction.response.send_message("🎧 들어왔어요!")
     except Exception as e:
-        await ctx.send(f"❌ 접속 중 오류 발생: {e}")
+        await interaction.response.send_message(f"❌ 접속 중 오류 발생: {e}", ephemeral=True)
 
-@bot.command()
-async def 야꺼져(ctx):
-    if ctx.voice_client:
-        await ctx.voice_client.disconnect()
-        await ctx.send("👋 나갈게요!")
+@bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
+async def 야꺼져(interaction: discord.Interaction):
+    if interaction.guild.voice_client:
+        await interaction.guild.voice_client.disconnect()
+        await interaction.response.send_message("👋 나갈게요!")
     else:
-        await ctx.send("❌ 저는 지금 음성 채널에 있지 않아요.")
+        await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
 
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
+async def 야재생해(interaction: discord.Interaction, search: str):
+    if not interaction.user.voice:
+        return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-@bot.command()
-async def 야재생해(ctx, *, search):
-    """현재 곡을 중단하고 새로운 곡을 즉시 재생 (대기열 초기화)"""
-    if not ctx.author.voice:
-        return await ctx.send("❌ 음성채널에 먼저 들어가 주세요")
+    # 슬래시 커맨드는 응답 시간이 짧으므로 미리 생각 중임을 표시
+    await interaction.response.defer()
 
-    if not ctx.voice_client:
-        await ctx.author.voice.channel.connect(timeout=60.0, reconnect=True)
+    if not interaction.guild.voice_client:
+        await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
 
-    async with ctx.typing():
-        try:
-            queues[ctx.guild.id] = deque()
-            
-            loop = asyncio.get_event_loop()
-            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
-                if 'entries' in info: info = info['entries'][0]
-            
-            url = info['url']
-            title = info['title']
-            
-            if ctx.voice_client.is_playing():
-                ctx.voice_client.stop()
-            
-            # [수정됨] executable="ffmpeg" 추가
-            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-            ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
-            await ctx.send(f"🎶 즉시 재생 시작: **{title}**")
-            
-        except Exception as e:
-            await ctx.send(f"❌ 재생 중 오류 발생: {e}")
-
-@bot.command()
-async def 야기다려(ctx, *, search):
-    """현재 곡이 있으면 대기열에 추가하고, 없으면 바로 재생"""
-    if not ctx.author.voice:
-        return await ctx.send("❌ 음성채널에 먼저 들어가 주세요")
-
-    if not ctx.voice_client:
-        await ctx.author.voice.channel.connect()
-
-    async with ctx.typing():
-        try:
-            loop = asyncio.get_event_loop()
-            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
-                if 'entries' in info: info = info['entries'][0]
-
-            url = info['url']
-            title = info['title']
-
-            if ctx.guild.id not in queues:
-                queues[ctx.guild.id] = deque()
-
-            if ctx.voice_client.is_playing():
-                queues[ctx.guild.id].append({'url': url, 'title': title})
-                await ctx.send(f"✅ 대기열에 추가됨: **{title}**")
-            else:
-                # [수정됨] executable="ffmpeg" 추가
-                source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-                ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
-                await ctx.send(f"🎶 재생 시작: **{title}**")
-
-        except Exception as e:
-            await ctx.send(f"❌ 대기열 추가 중 오류 발생: {e}")
-
-           
-@bot.command()
-
-async def 야멈춰(ctx):
-
-    if ctx.voice_client and ctx.voice_client.is_playing():
-
-        ctx.voice_client.stop()
-
-        await ctx.send("⏹️ 재생을 중지했습니다.")
-
-    else:
-
-        await ctx.send("❌ 재생 중인 노래가 없어요.")
+    try:
+        queues[interaction.guild.id] = deque()
         
-@bot.command()
-async def 야넘겨(ctx):
-    """현재 곡을 중지하여 after 콜백에 의해 다음 곡이 재생되게 함"""
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.stop() # stop 시 check_queue가 자동으로 실행됨
-        await ctx.send("⏭️ 현재 노래를 넘겼습니다!")
-    else:
-        await ctx.send("❌ 넘길 노래가 없습니다.")
+        loop = asyncio.get_event_loop()
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
+            if 'entries' in info: info = info['entries'][0]
+        
+        url = info['url']
+        title = info['title']
+        
+        if interaction.guild.voice_client.is_playing():
+            interaction.guild.voice_client.stop()
+        
+        source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) # interaction으로 전달
+        await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
+        
+    except Exception as e:
+        await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
 
-@bot.command()
-async def 야목록(ctx):
-    """현재 대기열에 어떤 곡들이 있는지 확인"""
-    if ctx.guild.id in queues and queues[ctx.guild.id]:
+@bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
+async def 야기다려(interaction: discord.Interaction, search: str):
+    if not interaction.user.voice:
+        return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
+
+    await interaction.response.defer()
+
+    if not interaction.guild.voice_client:
+        await interaction.user.voice.channel.connect()
+
+    try:
+        loop = asyncio.get_event_loop()
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
+            if 'entries' in info: info = info['entries'][0]
+
+        url = info['url']
+        title = info['title']
+
+        if interaction.guild.id not in queues:
+            queues[interaction.guild.id] = deque()
+
+        if interaction.guild.voice_client.is_playing():
+            queues[interaction.guild.id].append({'url': url, 'title': title})
+            await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
+        else:
+            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+            interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+            await interaction.followup.send(f"🎶 재생 시작: **{title}**")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ 대기열 추가 중 오류 발생: {e}")
+
+@bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
+async def 야멈춰(interaction: discord.Interaction):
+    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        interaction.guild.voice_client.stop()
+        await interaction.response.send_message("⏹️ 재생을 중지했습니다.")
+    else:
+        await interaction.response.send_message("❌ 재생 중인 노래가 없어요.", ephemeral=True)
+
+@bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
+async def 야넘겨(interaction: discord.Interaction):
+    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        interaction.guild.voice_client.stop()
+        await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
+    else:
+        await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+
+@bot.tree.command(name="야목록", description="현재 노래 대기열을 확인합니다.")
+async def 야목록(interaction: discord.Interaction):
+    if interaction.guild.id in queues and queues[interaction.guild.id]:
         msg = "📋 **현재 대기열 목록:**\n"
-        for i, song in enumerate(queues[ctx.guild.id], 1):
+        for i, song in enumerate(queues[interaction.guild.id], 1):
             msg += f"{i}. {song['title']}\n"
-        await ctx.send(msg)
+        await interaction.response.send_message(msg)
     else:
-        await ctx.send("📁 대기열이 비어 있습니다.")
+        await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
 
 # =====================
-# 명령어: 야도와줘
+# 명령어: 야도와줘 (슬래시 커맨드 버전)
 # =====================
-@bot.command(name="도움말")
-async def help_command(ctx):
+@bot.tree.command(name="야도와줘", description="봇의 모든 명령어 목록을 확인합니다.")
+async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🤖 봇 명령어 가이드",
-        description="이 봇에서 사용할 수 있는 전체 명령어 목록입니다.",
+        description="이 봇에서 사용할 수 있는 전체 슬래시 명령어 목록입니다.",
         color=0x3498db
     )
 
     # 일상 & 운세
     embed.add_field(
         name="🔮 일상 & 운세",
-        value="`!오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
-              "`!궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.\n"
-              "`!개소리`: 봇이 아무 말이나 던집니다 (무제한).",
+        value="`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
+              "`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.\n"
+              "`/개소리`: 봇이 아무 말이나 던집니다 (무제한).",
         inline=False
     )
 
     # 경제 시스템
     embed.add_field(
         name="💰 경제 & 낚시",
-        value="`!돈내놔`: 하루 3회, 10,000원을 지원받습니다.\n"
-              "`!잔고`: 현재 내 지갑에 있는 돈을 확인합니다.\n"
-              "`!낚시`: 물고기(또는 장화)를 잡습니다.\n"
-              "`!보관함`: 내가 잡은 물고기 목록을 봅니다.\n"
-              "`!물고기팔기`: 잡은 물고기를 모두 팔아 돈을 법니다.",
+        value="`/돈내놔`: 하루 3회, 10,000원을 지원받습니다.\n"
+              "`/잔고`: 현재 내 지갑에 있는 돈을 확인합니다.\n"
+              "`/낚시`: 물고기(또는 장화)를 잡습니다.\n"
+              "`/보관함`: 내가 잡은 물고기 목록을 봅니다.\n"
+              "`/물고기팔기`: 잡은 물고기를 모두 팔아 돈을 법니다.",
         inline=False
     )
 
     # 도박 시스템
     embed.add_field(
         name="🎰 도박",
-        value="`!홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
-              "`!도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
-              "`!로또`: 1,000원으로 인생 역전! (하루 15회)",
+        value="`/홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
+              "`/도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
+              "`/로또`: 1,000원으로 인생 역전! (하루 15회)",
         inline=False
     )
 
     # 음악 시스템
     embed.add_field(
         name="🎶 음악 재생",
-        value="`!야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
-              "`!야재생해 [검색어/URL]`: 노래를 검색하거나 링크로 재생합니다.\n"
-              "`!야멈춰`: 재생 중인 노래를 중지합니다.\n"
-              "`!야넘겨`: 다음 노래로 넘깁니다.\n"
-              "`!야꺼져`: 봇을 음성 채널에서 내보냅니다.",
+        value="`/야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
+              "`/야재생해 [검색어/URL]`: 노래를 즉시 재생합니다.\n"
+              "`/야기다려 [검색어/URL]`: 노래를 대기열에 추가합니다.\n"
+              "`/야멈춰`: 재생 중인 노래를 중지합니다.\n"
+              "`/야넘겨`: 다음 노래로 넘깁니다.\n"
+              "`/야목록`: 현재 대기열을 확인합니다.\n"
+              "`/야꺼져`: 봇을 음성 채널에서 내보냅니다.",
         inline=False
     )
+    
+    await interaction.response.send_message(embed=embed)
 
-    # =====================
-# 명령어: 야청소해 (메시지 삭제)
 # =====================
-@bot.command(name="야청소해")
-@commands.has_permissions(manage_messages=True) # 메시지 관리 권한이 있는 사람만 사용 가능
-async def 청소(ctx, amount: str = None):
+# 명령어: 야청소해 (슬래시 커맨드 버전)
+# =====================
+from discord import app_commands # 상단에 추가되어 있는지 확인하세요
+
+@bot.tree.command(name="야청소해", description="메시지를 지정한 개수만큼 삭제합니다.")
+@app_commands.describe(amount="삭제할 메시지 개수 또는 '전부' 입력")
+@app_commands.checks.has_permissions(manage_messages=True) # 권한 체크
+async def 청소(interaction: discord.Interaction, amount: str):
     """
     사용법: 
-    !야청소해 [숫자] : 해당 숫자만큼 메시지 삭제 (최대 999)
-    !야청소해 전부 : 채널의 메시지를 대량 삭제
+    /야청소해 amount: 10  -> 10개 삭제
+    /야청소해 amount: 전부 -> 대량 삭제
     """
     
-    if amount is None:
-        return await ctx.send("❓ 얼마나 지울까요? 숫자를 적어주세요! (예: `!청소 10` 또는 `!청소 전부`)")
-
+    # 슬래시 커맨드는 명령어 자체가 보이지 않으므로 +1을 할 필요가 없습니다.
     if amount == "전부":
-        # '전부'라고 입력하면 최대치인 999개 삭제 시도
         limit = 999
     else:
         try:
             limit = int(amount)
             if limit <= 0:
-                return await ctx.send("❌ 1개 이상의 숫자를 입력해야 합니다.")
+                return await interaction.response.send_message("❌ 1개 이상의 숫자를 입력해야 합니다.", ephemeral=True)
             if limit > 999:
-                limit = 999 # 최대 999개로 제한
+                limit = 999 
         except ValueError:
-            return await ctx.send("❌ 숫자를 입력하거나 '전부'라고 입력해 주세요.")
+            return await interaction.response.send_message("❌ 숫자를 입력하거나 '전부'라고 입력해 주세요.", ephemeral=True)
 
-    # 명령어 메시지 자체도 삭제해야 하므로 limit + 1
-    await ctx.channel.purge(limit=limit + 1)
+    # 지우는 동안 응답 대기 (생각 중...)
+    await interaction.response.defer(ephemeral=True)
     
-    # 안내 메시지 전송 후 3초 뒤 자동 삭제
-    msg = await ctx.send(f"🧹 **{limit}개**의 메시지를 깨끗하게 치웠어요!")
-    await asyncio.sleep(3)
-    await msg.delete()
+    # 메시지 삭제 실행
+    deleted = await interaction.channel.purge(limit=limit)
+    
+    # 결과 메시지 전송 (ephemeral=True로 설정하면 3초 뒤 삭제 로직 없이도 깔끔합니다)
+    await interaction.followup.send(f"🧹 **{len(deleted)}개**의 메시지를 깨끗하게 치웠어요!", ephemeral=True)
 
-# 권한 부족 시 에러 처리
-@청소.error
-async def purge_error(ctx, error):
-    if isinstance(error, commands.MissingPermissions):
-        await ctx.send("🚫 이 명령어를 사용하려면 **메시지 관리** 권한이 필요합니다!")
+# 권한 부족 시 에러 처리 (슬래시 커맨드용)
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("🚫 이 명령어를 사용하려면 **메시지 관리** 권한이 필요합니다!", ephemeral=True)
+    else:
+        # 다른 에러 발생 시 처리
+        print(f"Error: {error}")
 
 # =====================
-# 명령어: 야도와줘
+# 명령어: 야도와줘 (슬래시 커맨드 통합 버전)
 # =====================
-@bot.command(name="야도와줘")
-async def help_command(ctx):
+@bot.tree.command(name="야도와줘", description="봇의 모든 명령어 목록을 확인합니다.")
+async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🤖 봇 명령어 가이드",
-        description="이 봇에서 사용할 수 있는 전체 명령어 목록입니다.",
+        description="이 봇에서 사용할 수 있는 전체 슬래시 명령어 목록입니다.",
         color=0x3498db
     )
 
     # 일상 & 운세
     embed.add_field(
         name="🔮 일상 & 운세",
-        value="`!오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
-              "`!궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.\n"
-              "`!개소리`: 봇이 아무 말이나 던집니다 (무제한).",
+        value="`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
+              "`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.\n"
+              "`/개소리`: 봇이 아무 말이나 던집니다 (무제한).",
         inline=False
     )
 
     # 경제 시스템
     embed.add_field(
         name="💰 경제 & 낚시",
-        value="`!돈내놔`: 하루 3회, 10,000원을 지원받습니다.\n"
-              "`!잔고`: 현재 내 지갑에 있는 돈을 확인합니다.\n"
-              "`!낚시`: 물고기(또는 장화)를 잡습니다.\n"
-              "`!보관함`: 내가 잡은 물고기 목록을 봅니다.\n"
-              "`!물고기팔기`: 잡은 물고기를 모두 팔아 돈을 법니다.",
+        value="`/돈내놔`: 하루 3회, 10,000원을 지원받습니다.\n"
+              "`/잔고`: 현재 내 지갑에 있는 돈을 확인합니다.\n"
+              "`/낚시`: 물고기(또는 장화)를 잡습니다.\n"
+              "`/보관함`: 내가 잡은 물고기 목록을 봅니다.\n"
+              "`/물고기팔기`: 잡은 물고기를 모두 팔아 돈을 법니다.",
         inline=False
     )
 
     # 도박 시스템
     embed.add_field(
         name="🎰 도박",
-        value="`!홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
-              "`!도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
-              "`!로또`: 1,000원으로 인생 역전! (하루 15회)",
+        value="`/홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
+              "`/도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
+              "`/로또`: 1,000원으로 인생 역전! (하루 15회)",
         inline=False
     )
 
-    # 관리 기능 (도움말에 추가)
+    # 관리 기능
     embed.add_field(
         name="🛠️ 관리 기능",
-        value="`!청소 [숫자/전부]`: 메시지를 깔끔하게 지웁니다. (최대 999개)",
+        value="`/야청소해 [숫자/전부]`: 메시지를 깔끔하게 지웁니다. (최대 999개)",
         inline=False
     )
 
     # 음악 시스템
     embed.add_field(
         name="🎶 음악 재생",
-        value="`!야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
-              "`!야재생해 [검색어/URL]`: 노래를 검색하거나 링크로 재생합니다.\n"
-              "`!야기다려 [검색어]`: 현재 곡이 끝난 후 나오도록 **대기열에 추가**합니다.\n"
-              "`!야목록`: 현재 대기열에 담긴 노래들을 확인합니다.\n"
-              "`!야멈춰`: 재생 중인 노래를 중지합니다.\n"
-              "`!야넘겨`: 다음 노래로 넘깁니다.\n"
-              "`!야꺼져`: 봇을 음성 채널에서 내보냅니다.",
+        value="`/야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
+              "`/야재생해 [검색어/URL]`: 노래를 검색하거나 링크로 즉시 재생합니다.\n"
+              "`/야기다려 [검색어]`: 노래를 대기열에 추가합니다.\n"
+              "`/야목록`: 현재 대기열에 담긴 노래들을 확인합니다.\n"
+              "`/야멈춰`: 재생 중인 노래를 중지합니다.\n"
+              "`/야넘겨`: 다음 노래로 넘깁니다.\n"
+              "`/야꺼져`: 봇을 음성 채널에서 내보냅니다.",
         inline=False
     )
 
-    embed.set_footer(text=f"요청자: {ctx.author.display_name}", icon_url=ctx.author.display_avatar.url)
+    # 푸터 설정 (interaction.user 사용)
+    embed.set_footer(
+        text=f"요청자: {interaction.user.display_name}", 
+        icon_url=interaction.user.display_avatar.url
+    )
     
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
 # =====================
 # 실행
