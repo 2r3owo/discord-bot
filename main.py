@@ -6,8 +6,8 @@ from collections import deque
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "여기에_새로_발급받은_토큰을_넣으세요" 
-CHANNEL_ID = 1234567890  # 실제 채널 ID(숫자)를 입력해야 작동합니다.
+TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.GNz99j.F22EunKrx-aTA1vyv-M0v4G2Ki5hCf2T6nQPDo" 
+CHANNEL_ID = None  # 실제 채널 ID(숫자)를 입력해야 작동합니다.
 
 intents = discord.Intents.default()
 intents.message_content = True
