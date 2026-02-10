@@ -4,7 +4,8 @@ import random
 import yt_dlp
 import datetime
 import asyncio
-from collections import deque  # 대기열을 위한 deque 추가
+import random # 상단에 random 임포트 확인
+from collections import deque  # 대기열을 위한 deque 
 
 # =====================
 # 설정 부분
@@ -111,13 +112,12 @@ async def dinner():
 # =====================
 @bot.tree.command(name="오늘의운세", description="하루에 한 번, 오늘의 행운을 확인하세요!")
 async def 오늘의운세(interaction: discord.Interaction):
-    # 1. 정보 가져오기 (interaction 사용)
+    # 1. 정보 가져오기
     user_id = interaction.user.id
     today = now_kst().date()
 
     # 2. 중복 체크
     if user_id in user_fortune_data and user_fortune_data[user_id] == today:
-        # ephemeral=True를 넣으면 본인에게만 메시지가 보입니다. (깔끔함!)
         await interaction.response.send_message(
             f"⚠️ {interaction.user.mention}님, 운세는 하루에 한 번만 볼 수 있어요!", 
             ephemeral=True
@@ -154,9 +154,13 @@ async def 오늘의운세(interaction: discord.Interaction):
     selected = random.choice(fortune_results)
     user_fortune_data[user_id] = today
     
+    # 3. 임베드 생성 및 전송 (수정된 부분)
     embed = discord.Embed(title="🔮 오늘의 운세", description=selected, color=0xffd700)
-    embed.set_footer(text=f"{ctx.author.display_name}님의 하루를 응원합니다!")
-    await ctx.send(embed=embed)
+    # ctx.author.display_name 대신 interaction.user.display_name 사용
+    embed.set_footer(text=f"{interaction.user.display_name}님의 하루를 응원합니다!")
+    
+    # ctx.send 대신 interaction.response.send_message 사용
+    await interaction.response.send_message(embed=embed)
 
 # =====================
 # 명령어: 개소리 (무제한) 🎲
