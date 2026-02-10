@@ -609,61 +609,6 @@ async def 야목록(interaction: discord.Interaction):
         await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
 
 # =====================
-# 명령어: 야도와줘 (슬래시 커맨드 버전)
-# =====================
-@bot.tree.command(name="야도와줘", description="봇의 모든 명령어 목록을 확인합니다.")
-async def help_command(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🤖 봇 명령어 가이드",
-        description="이 봇에서 사용할 수 있는 전체 슬래시 명령어 목록입니다.",
-        color=0x3498db
-    )
-
-    # 일상 & 운세
-    embed.add_field(
-        name="🔮 일상 & 운세",
-        value="`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
-              "`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.\n"
-              "`/개소리`: 봇이 아무 말이나 던집니다 (무제한).",
-        inline=False
-    )
-
-    # 경제 시스템
-    embed.add_field(
-        name="💰 경제 & 낚시",
-        value="`/돈내놔`: 하루 3회, 10,000원을 지원받습니다.\n"
-              "`/잔고`: 현재 내 지갑에 있는 돈을 확인합니다.\n"
-              "`/낚시`: 물고기(또는 장화)를 잡습니다.\n"
-              "`/보관함`: 내가 잡은 물고기 목록을 봅니다.\n"
-              "`/물고기팔기`: 잡은 물고기를 모두 팔아 돈을 법니다.",
-        inline=False
-    )
-
-    # 도박 시스템
-    embed.add_field(
-        name="🎰 도박",
-        value="`/홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
-              "`/도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
-              "`/로또`: 1,000원으로 인생 역전! (하루 15회)",
-        inline=False
-    )
-
-    # 음악 시스템
-    embed.add_field(
-        name="🎶 음악 재생",
-        value="`/야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
-              "`/야재생해 [검색어/URL]`: 노래를 즉시 재생합니다.\n"
-              "`/야기다려 [검색어/URL]`: 노래를 대기열에 추가합니다.\n"
-              "`/야멈춰`: 재생 중인 노래를 중지합니다.\n"
-              "`/야넘겨`: 다음 노래로 넘깁니다.\n"
-              "`/야목록`: 현재 대기열을 확인합니다.\n"
-              "`/야꺼져`: 봇을 음성 채널에서 내보냅니다.",
-        inline=False
-    )
-    
-    await interaction.response.send_message(embed=embed)
-
-# =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
 # =====================
 from discord import app_commands # 상단에 추가되어 있는지 확인하세요
