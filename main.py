@@ -415,19 +415,24 @@ async def 로또(interaction: discord.Interaction): # ctx -> interaction
     await interaction.response.send_message(embed=embed)
 
 # ===================== 
-# 경제 시스템: 낚시 및 판매 (슬래시 커맨드 버전) 🎣
+# 경제 시스템: 데이터 설정
 # ===================== 
 
-# 물고기 데이터는 기존과 동일하게 유지됩니다.
 FISH_DATA = {
-    "👟 장화": {"price": 50, "chance": 30},
-    "🐟 피라미": {"price": 1000, "chance": 35},
+    # --- 기존 항목 ---
+    "👟 장화": {"price": 50, "chance": 25},
+    "🐟 피라미": {"price": 1000, "chance": 30},
     "🐠 고등어": {"price": 3000, "chance": 20},
-    "🐡 복어": {"price": 5000, "chance": 20},
-    "🦈 상어": {"price": 20000, "chance": 15},
-    "🐳 고래": {"price": 50000, "chance": 10}
+    "🐡 복어": {"price": 5000, "chance": 15},
+    "🦈 상어": {"price": 20000, "chance": 10},
+    "🐳 고래": {"price": 50000, "chance": 5},
+    "🪼 해파리": {"price": 1500, "chance": 20},
+    "🦐 새우": {"price": 800, "chance": 25},
+    "🐙 문어": {"price": 4500, "chance": 12},
+    "🦀 게": {"price": 2500, "chance": 18},
+    "🐢 거북이": {"price": 15000, "chance": 7},
+    "🫵 해마": {"price": 2000, "chance": 50}
 }
-
 @bot.tree.command(name="낚시", description="낚싯대를 던져 물고기를 잡습니다.")
 async def 낚시(interaction: discord.Interaction):
     user_id = interaction.user.id
