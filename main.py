@@ -9,7 +9,7 @@ from collections import deque  # 대기열을 위한 deque 추가
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.GPd1UU.PS8pdeY_ZBXO3BJYyqi9Ft89ADKYo6AmlVs9w0" 
+TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.G3FWMX.KmqF5VCkFFS3R1b5NyRYq4qL5tWekKqMJysXdQ" 
 CHANNEL_ID = None
 
 intents = discord.Intents.default()
