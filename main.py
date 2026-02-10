@@ -6,7 +6,7 @@ from collections import deque
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.GNz99j.F22EunKrx-aTA1vyv-M0v4G2Ki5hCf2T6nQPDo" 
+TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.Guo_qF.Ihas_V1gHLPbd85Tb5-Qz-N0szG7O2wK7Xdov4" 
 CHANNEL_ID = None  # 실제 채널 ID(숫자)를 입력해야 작동합니다.
 
 intents = discord.Intents.default()
