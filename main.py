@@ -5,11 +5,12 @@ import yt_dlp
 import datetime
 import asyncio
 from collections import deque  # 대기열을 위한 deque 
+import os
 
 # =====================
 # 설정 부분
 # =====================
-TOKEN = 여기에_진짜_토큰 
+TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = None
 
 intents = discord.Intents.default()
