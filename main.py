@@ -9,7 +9,7 @@ from collections import deque  # 대기열을 위한 deque
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.Guo_qF.Ihas_V1gHLPbd85Tb5-Qz-N0szG7O2wK7Xdov4" 
+TOKEN = 여기에_진짜_토큰 
 CHANNEL_ID = None
 
 intents = discord.Intents.default()
