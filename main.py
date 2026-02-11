@@ -42,6 +42,10 @@ YDL_OPTIONS = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
+    'nocheckcertificate': True,  # 추가: 인증서 체크 건너뛰기
+    'ignoreerrors': False,
+    'logtostderr': False,
+    'source_address': '0.0.0.0' # IPv6 문제 방지
 }
 
 # =====================
