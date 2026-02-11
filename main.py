@@ -539,33 +539,47 @@ async def 낚시(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
     
-    # 1. 이 서버 전용 인벤토리 가져오기
-    inventory = get_user_data(user_inventory, g_id, u_id, {})
-
-    # 첫 응답 전송
+    # 1. 첫 응답: 사용자에게 낚시 시작을 알림
     await interaction.response.send_message(f"🎣 {interaction.user.display_name}님이 낚싯대를 던졌습니다... (기다리는 중)")
-    await asyncio.sleep(2) 
-
-    # 2. 확률 기반 낚시 로직
-    fish_names = list(FISH_DATA.keys())
-    fish_weights = [f["chance"] for f in FISH_DATA.values()]
-    caught_fish = random.choices(fish_names, weights=fish_weights, k=1)[0]
-
-    # 3. 이 서버 인벤토리에 추가 및 저장
-    inventory[caught_fish] = inventory.get(caught_fish, 0) + 1
-    set_user_data(user_inventory, g_id, u_id, inventory)
     
-    embed = discord.Embed(title="🎣 낚시 성공!", description=f"와우! **{caught_fish}**를 잡았습니다!", color=0x3498db)
-    embed.set_footer(text=f"현재 이 서버 보관함에 {caught_fish} {inventory[caught_fish]}마리 보유 중")
-    
-    await interaction.followup.send(embed=embed)
+    try:
+        # 2. 이 서버 전용 인벤토리 가져오기
+        inventory = get_user_data(user_inventory, g_id, u_id, {})
+
+        # 실제 대기 시간 (느낌을 위해 2~3초)
+        await asyncio.sleep(2) 
+
+        # 3. 확률 기반 낚시 로직
+        fish_names = list(FISH_DATA.keys())
+        fish_weights = [f["chance"] for f in FISH_DATA.values()]
+        caught_fish = random.choices(fish_names, weights=fish_weights, k=1)[0]
+
+        # 4. 이 서버 인벤토리에 추가 및 저장
+        inventory[caught_fish] = inventory.get(caught_fish, 0) + 1
+        set_user_data(user_inventory, g_id, u_id, inventory)
+        
+        # 5. 결과 임베드 생성
+        embed = discord.Embed(
+            title="🎣 낚시 성공!", 
+            description=f"와우! **{interaction.user.display_name}**님,\n**{caught_fish}**를 잡았습니다!", 
+            color=0x3498db
+        )
+        embed.set_footer(text=f"현재 이 서버 보관함에 {caught_fish} {inventory[caught_fish]}마리 보유 중")
+        
+        # [수정 포인트] followup 대신 기존 메시지를 수정(edit)하여 결과를 보여줌
+        # 이렇게 하면 "기다리는 중" 메시지가 결과창으로 부드럽게 바뀝니다.
+        await interaction.edit_original_response(content=None, embed=embed)
+
+    except Exception as e:
+        # 만약 코드 실행 중 에러가 나면 멈추지 않고 채팅창에 에러를 띄움
+        print(f"낚시 에러: {e}")
+        await interaction.edit_original_response(content=f"❌ 낚시 도중 오류가 발생했습니다. (관리자 확인 필요)")
 
 @bot.tree.command(name="보관함", description="현재 서버에서 잡은 물고기 목록을 확인합니다.")
 async def 보관함(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
     
-    # 이 서버의 인벤토리만 가져옴
     inventory = get_user_data(user_inventory, g_id, u_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
@@ -580,7 +594,6 @@ async def 물고기팔기(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
     
-    # 이 서버의 인벤토리 가져오기
     inventory = get_user_data(user_inventory, g_id, u_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
@@ -589,15 +602,12 @@ async def 물고기팔기(interaction: discord.Interaction):
     total_profit = 0
     for fish_name, count in inventory.items():
         if count > 0:
-            # FISH_DATA에서 가격 정보 참조
             profit = FISH_DATA[fish_name]["price"] * count
             total_profit += profit
-            inventory[fish_name] = 0 # 해당 서버 인벤토리 초기화
+            inventory[fish_name] = 0 
 
-    # 1. 판매 결과 인벤토리 저장 (비우기)
     set_user_data(user_inventory, g_id, u_id, inventory)
     
-    # 2. 이 서버 잔고에 돈 지급 및 저장
     current_money = get_user_data(user_money, g_id, u_id, 0)
     new_money = current_money + total_profit
     set_user_data(user_money, g_id, u_id, new_money)
