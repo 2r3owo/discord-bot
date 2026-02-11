@@ -575,12 +575,25 @@ async def 도박(interaction: discord.Interaction, bet: int): # ctx -> interacti
             f"💰 현재 잔고: {user_money[user_id]:,}원"
         )
 
-        # =====================
+# =====================
 # 명령어: 가사빈칸게임
 # =====================
-@bot.tree.command(name="가사빈칸", description="노래 가사의 빈칸을 맞혀보세요! (1등 3만, 2등 1.5만)")
+# 1. 봇이 켜질 때 슬래시 명령어를 디스코드에 등록하는 설정
+@bot.event
+async def on_ready():
+    try:
+        synced = await bot.tree.sync()
+        print(f"{bot.user.name} 연결 완료!")
+        print(f"동기화된 명령어 개수: {len(synced)}개")
+    except Exception as e:
+        print(f"동기화 중 오류 발생: {e}")
+
+# =====================
+# 명령어: 가사빈칸게임
+# =====================
+@bot.tree.command(name="가사빈칸게임", description="노래 가사의 빈칸을 맞혀보세요! (1등 3만, 2등 1.5만)")
 async def 가사빈칸(interaction: discord.Interaction):
-    # 1. 문제 데이터 (총 100개 이상)
+    # 1. 문제 데이터
     lyrics_pool = [
         {"quiz": "내 마음 한가운데 [ ?? ]를 써 내려가", "answer": "암호"},
         {"quiz": "너의 그 한마디 말도 그 [ ?? ]도 나에겐 커다란 의미", "answer": "웃음"},
@@ -726,7 +739,7 @@ async def 가사빈칸(interaction: discord.Interaction):
     )
     await interaction.response.send_message(embed=embed)
 
-    winners = [] # 당첨자 목록 저장
+    winners = []
 
     def check(m):
         return m.channel == interaction.channel and m.content.replace(" ", "") == answer_text and not m.author.bot
@@ -752,13 +765,13 @@ async def 가사빈칸(interaction: discord.Interaction):
             break
 
     if not winners:
-        await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_text}]**였습니다. 아무도 맞히지 못했네요.")
+        await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_text}]**였습니다.")
     else:
         for i, user_id in enumerate(winners):
             reward = 30000 if i == 0 else 15000
             user_money[user_id] = user_money.get(user_id, 0) + reward
         
-        await interaction.channel.send(f"🎊 게임 종료! 당첨되신 분들 축하드려요! (정답: {answer_text})")
+        await interaction.channel.send(f"🎊 게임 종료! (정답: {answer_text})")
 
 # =====================
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
