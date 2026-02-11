@@ -5,11 +5,7 @@ import yt_dlp
 import datetime
 import asyncio
 import os
-from collections import deque  # 대기열을 위한 deque
-import urllib.parse  # 코드 맨 위에 추가
-from io import BytesIO # 이미지를 바이트로 변환하기 위해 필요
-import random
-import requests # 추가
+from collections import deque  # 대기열을 위한 deque 
 
 # =====================
 # 설정 부분
@@ -629,46 +625,6 @@ async def 야목록(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
 
-# =====================
-# 명령어: 야그려줘 (무료 버전 - 가입/키 필요 없음)
-# =====================
-@bot.tree.command(name="야그려줘", description="AI가 그림을 그려줍니다. (무료 서버 사용)")
-async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
-    # 봇이 응답을 준비 중임을 알림 (3초 타임아웃 방지)
-    await inte# =====================
-# 명령어: 야그려줘 (무료 버전 - 최적화 완료)
-# =====================
-@bot.tree.command(name="야그려줘", description="AI가 그림을 그려줍니다. (무료 서버 사용)")
-async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
-    # 봇이 응답을 준비 중임을 알림 (3초 타임아웃 방지)
-    await interaction.response.defer(thinking=True)
-    
-    try:
-        # 1. 한글 프롬프트 인코딩
-        encoded_prompt = urllib.parse.quote(prompt)
-        
-        # 2. 랜덤 시드 생성
-        seed = random.randint(1, 1000000)
-        
-        # 3. 최적화된 주소 형식 (확장자 .jpg 추가 및 모델 지정)
-        # pollinations.ai/p/프롬프트.jpg 형식을 사용하면 디스코드에서 이미지로 더 잘 인식합니다.
-        image_url = f"https://pollinations.ai/p/{encoded_prompt}.jpg?width=1024&height=1024&seed={seed}&nologo=true&model=flux"
-        
-        embed = discord.Embed(
-            title="🎨 그림이 완성되었어요!",
-            description=f"**키워드:** {prompt}",
-            color=0x1abc9c
-        )
-        embed.set_image(url=image_url)
-        
-        # 4. 이미지 생성 시간이 걸릴 수 있으므로, 결과 전송
-        await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        print(f"Error: {e}")
-        # 에러 발생 시 사용자에게 알림
-        await interaction.followup.send(f"❌ 그림 생성 중 오류가 발생했습니다. 다시 시도해 주세요! (사유: {e})")
-        
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
 # =====================
