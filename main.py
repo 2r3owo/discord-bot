@@ -6,6 +6,7 @@ import datetime
 import asyncio
 import os
 from collections import deque  # 대기열을 위한 deque
+import urllib.parse  # 코드 맨 위에 추가
 from io import BytesIO # 이미지를 바이트로 변환하기 위해 필요
 
 # =====================
@@ -633,9 +634,8 @@ async def 야목록(interaction: discord.Interaction):
 async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
     await interaction.response.defer()
     
-    # 영문으로 번역하지 않아도 어느 정도 이해하지만, 영어가 더 정확합니다.
-    # pollinations.ai는 URL에 프롬프트를 넣으면 이미지를 생성해줍니다.
-    encoded_prompt = prompt.replace(" ", "%20")
+    # 한글 프롬프트를 URL이 이해할 수 있게 인코딩합니다.
+    encoded_prompt = urllib.parse.quote(prompt)
     image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed={random.randint(1, 100000)}"
     
     embed = discord.Embed(title=f"🎨 그림 완성: {prompt}", color=0x1abc9c)
