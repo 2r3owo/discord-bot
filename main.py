@@ -5,7 +5,9 @@ import yt_dlp
 import datetime
 import asyncio
 import os
-from collections import deque  # 대기열을 위한 deque 
+from collections import deque  # 대기열을 위한 deque
+import openai
+from io import BytesIO # 이미지를 바이트로 변환하기 위해 필요
 
 # =====================
 # 설정 부분
@@ -624,6 +626,23 @@ async def 야목록(interaction: discord.Interaction):
         await interaction.response.send_message(msg)
     else:
         await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
+
+# =====================
+# 명령어: 야그려줘 (무료 버전 - 가입/키 필요 없음)
+# =====================
+@bot.tree.command(name="야그려줘", description="AI가 그림을 그려줍니다. (무료 서버 사용)")
+async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
+    await interaction.response.defer()
+    
+    # 영문으로 번역하지 않아도 어느 정도 이해하지만, 영어가 더 정확합니다.
+    # pollinations.ai는 URL에 프롬프트를 넣으면 이미지를 생성해줍니다.
+    encoded_prompt = prompt.replace(" ", "%20")
+    image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed={random.randint(1, 100000)}"
+    
+    embed = discord.Embed(title=f"🎨 그림 완성: {prompt}", color=0x1abc9c)
+    embed.set_image(url=image_url)
+    
+    await interaction.followup.send(embed=embed)
 
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
