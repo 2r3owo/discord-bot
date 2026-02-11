@@ -668,7 +668,7 @@ async def on_ready():
 # =====================
 # 명령어: 퍼니퀴즈 (중단 기능 포함)
 # =====================
-@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (30초, 단계별 힌트)")
+@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (30초, 3단계 힌트)")
 async def 가사빈칸(interaction: discord.Interaction):
     g_id = interaction.guild_id
     
@@ -940,7 +940,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "우리의 [ ?? ]은 여기까지인가 봐", "answer": "인연"}
     ]
 
-    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!** (중단: `/야그만해`)\n10초마다 힌트가 제공됩니다. 우승 상금: **30,000원**!")
+    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!** (중단: `/야그만해`)\n단계별로 힌트가 제공됩니다. 우승 상금: **30,000원**!")
     await asyncio.sleep(2)
 
     current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
@@ -955,9 +955,17 @@ async def 가사빈칸(interaction: discord.Interaction):
         answer_raw = selected["answer"]
         answer_text = answer_raw.replace(" ", "")
         
-        # 힌트 생성
+        # --- 힌트 데이터 미리 생성 ---
         chosung_hint = get_chosung(answer_raw)
-        first_char_hint = answer_raw[0] + "○" * (len(answer_raw) - 1)
+        
+        # 2단계: 첫 글자 오픈 (예: 백○○)
+        hint2_text = answer_raw[0] + "○" * (len(answer_raw) - 1)
+        
+        # 3단계: 두 글자 오픈 (예: 백두○, 정답이 두 글자면 전체 공개됨)
+        if len(answer_raw) > 1:
+            hint3_text = answer_raw[:2] + "○" * (len(answer_raw) - 2)
+        else:
+            hint3_text = answer_raw  # 한 글자면 그냥 정답 공개
 
         embed = discord.Embed(
             title=f"🎵 가사 빈칸 게임 ({i}/10 라운드)",
@@ -974,13 +982,13 @@ async def 가사빈칸(interaction: discord.Interaction):
         final_answer_msg = None
 
         try:
-            # --- [1단계] 첫 10초 대기 (힌트 없음) ---
+            # --- [단계 0] 첫 10초: 힌트 없음 ---
             final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
             
         except asyncio.TimeoutError:
             if not active_games.get(g_id): return
             
-            # --- [2단계] 10초 경과: 초성 힌트 공개 ---
+            # --- [단계 1] 10초 경과: 초성 힌트 (10초 대기) ---
             hint1_embed = discord.Embed(
                 title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 1차 힌트",
                 description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n\n⏱️ **남은 시간:** 20초",
@@ -989,24 +997,36 @@ async def 가사빈칸(interaction: discord.Interaction):
             await quiz_msg.edit(embed=hint1_embed)
             
             try:
-                final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
+                final_answer_msg = await bot.wait_for('message', check=check, timeout=5.0)
             except asyncio.TimeoutError:
                 if not active_games.get(g_id): return
                 
-                # --- [3단계] 20초 경과: 한 글자 오픈 힌트 공개 ---
+                # --- [단계 2] 15초 경과: 한 글자 오픈 (5초 대기) ---
                 hint2_embed = discord.Embed(
                     title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 2차 힌트",
-                    description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n🎁 **결정적 힌트:** `{first_char_hint}`\n\n⏱️ **마지막 10초!**",
+                    description=f"**문제:** `{quiz_text}`\n💡 **초성:** `{chosung_hint}`\n🎁 **첫 글자 오픈:** `{hint2_text}`\n\n⏱️ **남은 시간:** 15초",
                     color=0xffa500
                 )
                 await quiz_msg.edit(embed=hint2_embed)
                 
                 try:
-                    final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
+                    final_answer_msg = await bot.wait_for('message', check=check, timeout=5.0)
                 except asyncio.TimeoutError:
-                    await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_raw}]**였습니다.")
+                    if not active_games.get(g_id): return
+                    
+                    # --- [단계 3] 20초 경과: 두 글자 오픈 (마지막 10초 대기) ---
+                    hint3_embed = discord.Embed(
+                        title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 3차 힌트",
+                        description=f"**문제:** `{quiz_text}`\n💡 **초성:** `{chosung_hint}`\n🎁 **두 글자 오픈:** `{hint3_text}`\n\n⏱️ **마지막 10초!**",
+                        color=0xff4500
+                    )
+                    await quiz_msg.edit(embed=hint3_embed)
+                    
+                    try:
+                        final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
+                    except asyncio.TimeoutError:
+                        await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_raw}]**였습니다.")
 
-        # 정답자가 있을 경우 점수 기록
         if final_answer_msg:
             scoreboard[final_answer_msg.author.id] = scoreboard.get(final_answer_msg.author.id, 0) + 1
             await interaction.channel.send(f"✅ **{final_answer_msg.author.mention}님 정답!** (현재 {scoreboard[final_answer_msg.author.id]}점)")
@@ -1014,7 +1034,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         if i < 10 and active_games.get(g_id):
             await asyncio.sleep(2)
 
-    # --- 이하 결과 발표 및 상금 지급 로직은 기존과 동일 ---
+    # --- 게임 종료 후 결과 발표 및 상금 지급 로직 ---
     active_games[g_id] = False
     if not scoreboard:
         await interaction.channel.send("🏁 **게임 종료!** 우승자가 없습니다.")
