@@ -547,11 +547,11 @@ FISH_DATA = {
     "복어": {"chance": 4, "price": 4500},
     "해파리": {"chance": 4, "price": 4000},
     "문어": {"chance": 3, "price": 7000},
-    "거북이": {"chance": 2, "price": 15000},
-    "해마": {"chance": 1, "price": 30000},
-    "물범": {"chance": 0.5, "price": 50000},
-    "상어": {"chance": 0.3, "price": 100000},
-    "고래": {"chance": 0.2, "price": 300000}
+    "거북이": {"chance": 2, "price": 10000},
+    "해마": {"chance": 1, "price": 5000},
+    "물범": {"chance": 0.5, "price": 30000},
+    "상어": {"chance": 0.3, "price": 15000},
+    "고래": {"chance": 0.2, "price": 20000}
 }
 
 @bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
