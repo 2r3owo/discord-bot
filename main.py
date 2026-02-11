@@ -575,6 +575,191 @@ async def 도박(interaction: discord.Interaction, bet: int): # ctx -> interacti
             f"💰 현재 잔고: {user_money[user_id]:,}원"
         )
 
+        # =====================
+# 명령어: 가사빈칸게임
+# =====================
+@bot.tree.command(name="가사빈칸", description="노래 가사의 빈칸을 맞혀보세요! (1등 3만, 2등 1.5만)")
+async def 가사빈칸(interaction: discord.Interaction):
+    # 1. 문제 데이터 (총 100개 이상)
+    lyrics_pool = [
+        {"quiz": "내 마음 한가운데 [ ?? ]를 써 내려가", "answer": "암호"},
+        {"quiz": "너의 그 한마디 말도 그 [ ?? ]도 나에겐 커다란 의미", "answer": "웃음"},
+        {"quiz": "겁이 나지만 [ ?? ]밖에 난 몰라", "answer": "사랑"},
+        {"quiz": "밤하늘의 [ ?? ]을 따서 너에게 줄게", "answer": "별"},
+        {"quiz": "우리의 [ ?? ]을 위해 건배", "answer": "행복"},
+        {"quiz": "머리부터 발끝까지 다 [ ?? ]스러워", "answer": "사랑"},
+        {"quiz": "나랑 [ ?? ] 보러 가지 않을래", "answer": "별"},
+        {"quiz": "아무노래나 일단 틀어 아무거나 [ ?? ]해 보이는 걸로", "answer": "신나"},
+        {"quiz": "잔을 들어 [ ?? ]를 마셔 마셔 마셔 내 술잔", "answer": "고통"},
+        {"quiz": "우린 전생에 [ ?? ]이었나 봐", "answer": "연인"},
+        {"quiz": "어제보다 오늘 더 [ ?? ]해", "answer": "사랑"},
+        {"quiz": "그대 내게 [ ?? ]을 주는 사람", "answer": "행복"},
+        {"quiz": "총 맞은 것처럼 정신이 너무 [ ?? ]", "answer": "없어"},
+        {"quiz": "나를 사랑한다고 말해줘 [ ?? ]처럼", "answer": "영화"},
+        {"quiz": "보고 싶다 보고 싶다 이런 내가 [ ?? ]", "answer": "미워"},
+        {"quiz": "비가 오는 날엔 나를 [ ?? ]와", "answer": "찾아"},
+        {"quiz": "흔들리는 [ ?? ] 속에서 네 샴푸향이 느껴진거야", "answer": "꽃들"},
+        {"quiz": "너를 만나고 [ ?? ]이 많아졌어", "answer": "눈물"},
+        {"quiz": "나의 [ ?? ]은 너였어", "answer": "전부"},
+        {"quiz": "꽃길만 [ ?? ]게 해줄게", "answer": "걷"},
+        {"quiz": "빨간 맛 [ ?? ]해 허니", "answer": "궁금"},
+        {"quiz": "뚜두뚜두 [ ?? ]를 쏴라", "answer": "총"},
+        {"quiz": "샤샤샤 친구를 만나느라 [ ?? ]", "answer": "shy"},
+        {"quiz": "내가 제일 잘 [ ?? ]", "answer": "나가"},
+        {"quiz": "기다리다 [ ?? ]가 되나 봐", "answer": "지쳐"},
+        {"quiz": "봄바람 휘날리며 흩날리는 [ ?? ] 잎이", "answer": "벚꽃"},
+        {"quiz": "벌써 [ ?? ]시인데 아직도 난 너를", "answer": "12"},
+        {"quiz": "니가 하면 로맨스 내가 하면 [ ?? ]", "answer": "불륜"},
+        {"quiz": "그대 기억이 지난 [ ?? ]보다 더 아파", "answer": "사랑"},
+        {"quiz": "아름다운 이 땅에 금수강산에 [ ?? ] 할아버지가 터 잡으시고", "answer": "단군"},
+        {"quiz": "울면 안 돼 산타할아버지는 [ ?? ] 아이에게 선물을 안 주신대", "answer": "우는"},
+        {"quiz": "독도는 우리 땅 [ ?? ]은 우리 땅", "answer": "대마도"},
+        {"quiz": "나의 살던 [ ?? ]은 꽃 피는 산골", "answer": "고향"},
+        {"quiz": "반짝반짝 작은 별 아름답게 [ ?? ]네", "answer": "비치"},
+        {"quiz": "산토끼 토끼야 어디를 [ ?? ]느냐", "answer": "가"},
+        {"quiz": "학교 종이 [ ?? ]친다 어서 모이자", "answer": "땡땡땡"},
+        {"quiz": "곰 세 마리가 [ ?? ] 집에 있어", "answer": "한"},
+        {"quiz": "원숭이 엉덩이는 [ ?? ] 빨가면 사과", "answer": "빨개"},
+        {"quiz": "아기 상어 [ ?? ] 귀여운", "answer": "뚜루루뚜루"},
+        {"quiz": "동해 물과 [ ?? ]산이 마르고 닳도록", "answer": "백두"},
+        {"quiz": "예쁜 건 나도 [ ?? ]", "answer": "알아"},
+        {"quiz": "네가 진짜로 [ ?? ]는 게 뭐야", "answer": "원하"},
+        {"quiz": "내 마음의 [ ?? ]을 저장", "answer": "별"},
+        {"quiz": "오늘 밤 주인공은 [ ?? ]", "answer": "나야나"},
+        {"quiz": "미안해 미안해 [ ?? ]지마", "answer": "하지"},
+        {"quiz": "사랑이 어떻게 [ ?? ]니", "answer": "변하"},
+        {"quiz": "너에게 난 [ ?? ] 노을처럼", "answer": "해질녘"},
+        {"quiz": "가질 수 없는 [ ?? ]", "answer": "너"},
+        {"quiz": "모든 날 모든 [ ?? ] 함께해", "answer": "순간"},
+        {"quiz": "취기를 빌려 오늘 너에게 [ ?? ]할게", "answer": "고백"},
+        {"quiz": "나의 [ ?? ]을 너에게 줄게", "answer": "바다"},
+        {"quiz": "그대 내게 [ ?? ]처럼 다가와", "answer": "선물"},
+        {"quiz": "좋은 날엔 항상 [ ?? ]가 있어", "answer": "너"},
+        {"quiz": "사랑이라는 이유로 [ ?? ]가 되네", "answer": "하나"},
+        {"quiz": "우리의 [ ?? ]은 아직 끝나지 않았어", "answer": "노래"},
+        {"quiz": "그대여 [ ?? ]을 잊지 말아요", "answer": "오늘"},
+        {"quiz": "다시 만난 [ ?? ]", "answer": "세계"},
+        {"quiz": "기억해 복도에서 떠들다 나한테 [ ?? ]던 거", "answer": "맞"},
+        {"quiz": "너는 나의 [ ?? ] 비타민", "answer": "인간"},
+        {"quiz": "오늘부터 우리는 [ ?? ]", "answer": "1일"},
+        {"quiz": "너와 함께라면 [ ?? ]도 좋아", "answer": "어디"},
+        {"quiz": "사랑은 [ ?? ] 무늬", "answer": "체크"},
+        {"quiz": "우리집으로 [ ?? ]", "answer": "가자"},
+        {"quiz": "니가 왜 거기서 [ ?? ]", "answer": "나와"},
+        {"quiz": "막걸리 [ ?? ]잔", "answer": "한"},
+        {"quiz": "찐찐찐찐 [ ?? ]이야", "answer": "찐"},
+        {"quiz": "어느 60대 노부부 [ ?? ]", "answer": "이야기"},
+        {"quiz": "사랑의 [ ?? ] 센터", "answer": "콜"},
+        {"quiz": "테스형 세상이 왜 이래 왜 이렇게 [ ?? ]", "answer": "힘들어"},
+        {"quiz": "꽃바람 불면 내게로 [ ?? ]", "answer": "와요"},
+        {"quiz": "남행열차에 몸을 [ ?? ]", "answer": "실었네"},
+        {"quiz": "아모르 [ ?? ]", "answer": "파티"},
+        {"quiz": "내 나이가 [ ?? ]어서", "answer": "어때"},
+        {"quiz": "무조건 무조건 [ ?? ]야", "answer": "이야"},
+        {"quiz": "땡벌 땡벌 난 이제 [ ?? ]었어", "answer": "지쳤"},
+        {"quiz": "자기야 사랑해 [ ?? ]만큼", "answer": "하늘"},
+        {"quiz": "첫눈에 [ ?? ]했어", "answer": "반"},
+        {"quiz": "당신은 [ ?? ] 받기 위해 태어난 사람", "answer": "사랑"},
+        {"quiz": "축하합니다 당신의 [ ?? ]을", "answer": "생일"},
+        {"quiz": "만나서 [ ?? ]습니다 다음에 또 만나요", "answer": "반가워"},
+        {"quiz": "안녕은 영원한 [ ?? ]은 아니겠지요", "answer": "헤어짐"},
+        {"quiz": "걱정 말아요 그대 그대여 [ ?? ]하지 말아요", "answer": "아무걱정"},
+        {"quiz": "나의 밤은 깊어만 가고 [ ?? ]이 없는 이 밤", "answer": "끝"},
+        {"quiz": "만약에 내가 간다면 내가 [ ?? ]가 된다면", "answer": "바보"},
+        {"quiz": "어디에도 없는 [ ?? ] 너의 곁에 있을게", "answer": "기억"},
+        {"quiz": "서로의 마음에 [ ?? ]을 띄우고 다시 만날 때까지", "answer": "작은배"},
+        {"quiz": "흩날리는 기억들 속에 [ ?? ]을 찾아봐", "answer": "조각"},
+        {"quiz": "우리 다시 만날 수 있을까 [ ?? ]처럼", "answer": "운명"},
+        {"quiz": "가끔 미치게 네가 [ ?? ] 싶을 때가 있어", "answer": "보고"},
+        {"quiz": "차가운 겨울바람이 불면 [ ?? ]가 생각나", "answer": "너"},
+        {"quiz": "우리가 사랑했던 그 [ ?? ]들을 잊지 마", "answer": "순간"},
+        {"quiz": "꿈결처럼 감미로운 [ ?? ]의 속삭임", "answer": "그대"},
+        {"quiz": "사랑은 향기를 남기고 [ ?? ]은 눈물을 남기고", "answer": "이별"},
+        {"quiz": "너에게 난 [ ?? ]이 되고 싶어", "answer": "우주"},
+        {"quiz": "오랜 시간 동안 [ ?? ]해온 나의 사랑", "answer": "간직"},
+        {"quiz": "눈을 감으면 자꾸만 [ ?? ]오르는 그 얼굴", "answer": "떠"},
+        {"quiz": "바람이 불어오는 곳 그곳으로 [ ?? ]네", "answer": "가"},
+        {"quiz": "이 소설의 끝을 다시 써보려 해 [ ?? ]이 되길", "answer": "해피엔딩"},
+        {"quiz": "사랑이라는 [ ?? ]로 너를 가두고 싶지 않아", "answer": "이름"},
+        {"quiz": "우린 너무 [ ?? ]을 사랑했었나 봐", "answer": "서로"},
+        {"quiz": "나의 모든 순간은 [ ?? ]였다", "answer": "너"},
+        {"quiz": "그때 헤어지면 돼 지금은 [ ?? ]해", "answer": "사랑"},
+        {"quiz": "너의 번호를 누르고 한참을 [ ?? ]했어", "answer": "망설"},
+        {"quiz": "오늘도 난 술을 마셔 너를 [ ?? ]내기 위해", "answer": "지워"},
+        {"quiz": "너와 함께 걷던 이 [ ?? ]을 기억해", "answer": "거리"},
+        {"quiz": "우리는 마치 [ ?? ]처럼 멀어져만 가네", "answer": "평행선"},
+        {"quiz": "내 생에 가장 [ ?? ]다운 날들", "answer": "아름"},
+        {"quiz": "사랑은 왜 이렇게 [ ?? ]가요", "answer": "어렵"},
+        {"quiz": "네가 없는 방 안엔 [ ?? ]만 가득해", "answer": "적막"},
+        {"quiz": "말하지 않아도 [ ?? ] 수 있어", "answer": "알"},
+        {"quiz": "시간이 약이라는 말은 다 [ ?? ]말이야", "answer": "거짓"},
+        {"quiz": "너를 위해 죽어도 좋아 내 [ ?? ]은 너니까", "answer": "전부"},
+        {"quiz": "어느새 훌쩍 커버린 [ ?? ]가 낯설어", "answer": "내모습"},
+        {"quiz": "우리의 밤은 당신의 낮보다 [ ?? ]답다", "answer": "아름"},
+        {"quiz": "그대 내 품에 안겨 눈을 [ ?? ]요", "answer": "감아"},
+        {"quiz": "사랑했지만 그대를 사랑했지만 [ ?? ]할 수밖에", "answer": "떠나갈"},
+        {"quiz": "매일 매일 기다려 너를 [ ?? ]하며", "answer": "그리워"},
+        {"quiz": "내가 만약 괴로울 때면 내가 [ ?? ]가 되어줄게", "answer": "위로"},
+        {"quiz": "어둠 속에서 빛을 찾아 [ ?? ]이는 나", "answer": "헤매"},
+        {"quiz": "너의 기억 속에 난 어떤 [ ?? ]일까", "answer": "사람"},
+        {"quiz": "사랑하고 싶어 죽을 만큼 [ ?? ]하고 싶어", "answer": "사랑"},
+        {"quiz": "나보다 더 나를 잘 아는 [ ?? ]에게", "answer": "너"},
+        {"quiz": "우리의 사랑은 [ ?? ]처럼 짧았지", "answer": "여름밤"},
+        {"quiz": "그대 내게 다시 돌아오길 [ ?? ]해", "answer": "간절"},
+        {"quiz": "눈물이 흐르면 [ ?? ]이 날까요", "answer": "기억"},
+        {"quiz": "너와 나누던 [ ?? ]들이 그리워", "answer": "귓속말"},
+        {"quiz": "이 밤의 끝을 잡고 있는 나의 [ ?? ]", "answer": "미련"},
+        {"quiz": "사랑해라는 말은 너무 [ ?? ]해", "answer": "흔"},
+        {"quiz": "네가 내게 준 [ ?? ]을 기억해", "answer": "상처"},
+        {"quiz": "우리는 서로에게 [ ?? ]가 되어주었지", "answer": "등불"},
+        {"quiz": "마지막 인사를 나누며 [ ?? ]를 보냈어", "answer": "미소"}
+    ]
+
+    selected = random.choice(lyrics_pool)
+    quiz_text = selected["quiz"]
+    answer_text = selected["answer"]
+
+    embed = discord.Embed(
+        title="🎵 가사 빈칸 맞히기 게임",
+        description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 30초\n🥇 1등: 30,000원 | 🥈 2등: 15,000원",
+        color=0x00ffcc
+    )
+    await interaction.response.send_message(embed=embed)
+
+    winners = [] # 당첨자 목록 저장
+
+    def check(m):
+        return m.channel == interaction.channel and m.content.replace(" ", "") == answer_text and not m.author.bot
+
+    start_time = asyncio.get_event_loop().time()
+    
+    while len(winners) < 2:
+        try:
+            timeout = 30.0 - (asyncio.get_event_loop().time() - start_time)
+            if timeout <= 0:
+                break
+                
+            msg = await bot.wait_for('message', check=check, timeout=timeout)
+            
+            if msg.author.id not in winners:
+                winners.append(msg.author.id)
+                if len(winners) == 1:
+                    await interaction.channel.send(f"🥇 **1등 당첨!** {msg.author.mention}님 정답! (상금 30,000원)")
+                elif len(winners) == 2:
+                    await interaction.channel.send(f"🥈 **2등 당첨!** {msg.author.mention}님 정답! (상금 15,000원)")
+        
+        except asyncio.TimeoutError:
+            break
+
+    if not winners:
+        await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_text}]**였습니다. 아무도 맞히지 못했네요.")
+    else:
+        for i, user_id in enumerate(winners):
+            reward = 30000 if i == 0 else 15000
+            user_money[user_id] = user_money.get(user_id, 0) + reward
+        
+        await interaction.channel.send(f"🎊 게임 종료! 당첨되신 분들 축하드려요! (정답: {answer_text})")
+
 # =====================
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
 # =====================
