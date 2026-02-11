@@ -603,13 +603,21 @@ async def on_ready():
 
 
 # =====================
-# 명령어: 퍼니퀴즈 (최종 보상형)
-# ===================== 
+# 명령어: 퍼니퀴즈 (중단 기능 포함)
+# =====================
 @bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (20초 / 10초 후 힌트)")
 async def 가사빈칸(interaction: discord.Interaction):
-    # 1. 문제 데이터 (문법 오류 수정 및 40문제 통합)
+    guild_id = interaction.guild_id
+    
+    # 이미 게임이 진행 중인지 확인
+    if active_games.get(guild_id):
+        await interaction.response.send_message("❌ 이미 게임이 진행 중입니다!", ephemeral=True)
+        return
+
+    # 게임 시작 상태 설정
+    active_games[guild_id] = True
+    # 1. 문제 데이터 (제목 요소 완벽 제거 및 순수 가사 구성)
     lyrics_pool = [
-        # --- 국민 가요 & 유명 곡 ---
         {"quiz": "동해 물과 [ ?? ]산이 마르고 닳도록", "answer": "백두"},
         {"quiz": "아름다운 이 땅에 금수강산에 [ ?? ] 할아버지가 터 잡으시고", "answer": "단군"},
         {"quiz": "나의 살던 [ ?? ]은 꽃 피는 산골", "answer": "고향"},
@@ -642,36 +650,35 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "내 피 땀 [ ?? ] 내 마지막 춤을 다 가져가", "answer": "눈물"},
         {"quiz": "영원히 우린 [ ?? ]해", "answer": "함께"},
         {"quiz": "어텐션 [ ?? ]를 집중해", "answer": "시선"},
-        {"quiz": "하입보이 너를 [ ?? ]한 거니까", "answer": "선택"},
-        {"quiz": "슈퍼 샤이 떨려서 [ ?? ]도 못해", "answer": "말"},
-        {"quiz": "피카부 설렐 때만 [ ?? ] 사랑하니까", "answer": "사랑"},
-        {"quiz": "배드 보이 너는 좀 [ ?? ]", "answer": "나빠"},
-        {"quiz": "치어 업 베이베 조금 더 [ ?? ]을 내", "answer": "힘"},
+        {"quiz": "너를 [ ?? ]한 거니까 (Hype Boy)", "answer": "선택"},
+        {"quiz": "너무 떨려서 [ ?? ]도 못해 (Super Shy)", "answer": "말"},
+        {"quiz": "설렐 때만 [ ?? ] 사랑하니까 (Peek-A-Boo)", "answer": "사랑"},
+        {"quiz": "조금 더 [ ?? ]을 내 (Cheer Up)", "answer": "힘"},
         {"quiz": "으르렁 으르렁 으르렁 [ ?? ]", "answer": "대"},
-        {"quiz": "별이 빛나는 밤 너를 [ ?? ]하는 밤", "answer": "그리워"},
-        {"quiz": "작은 것들을 위한 시 너의 모든 게 [ ?? ]해", "answer": "궁금"},
-        {"quiz": "다이너마이트 빛으로 이 밤을 [ ?? ]", "answer": "밝혀"},
-        {"quiz": "버터 너의 [ ?? ]을 녹여버릴 거야", "answer": "마음"},
-        {"quiz": "퀸카 내 [ ?? ]은 핫해", "answer": "몸매"},
-        {"quiz": "러브 리 나는 네가 [ ?? ]", "answer": "좋아"},
+        {"quiz": "너를 [ ?? ]하는 밤 (별이 빛나는 밤)", "answer": "그리워"},
+        {"quiz": "너의 모든 게 [ ?? ]해 (작은 것들을 위한 시)", "answer": "궁금"},
+        {"quiz": "빛으로 이 밤을 [ ?? ] (Dynamite)", "answer": "밝혀"},
+        {"quiz": "너의 [ ?? ]을 녹여버릴 거야 (Butter)", "answer": "마음"},
+        {"quiz": "내 [ ?? ]은 핫해 (Queencard)", "answer": "몸매"},
+        {"quiz": "나는 네가 [ ?? ] (Love Lee)", "answer": "좋아"},
         {"quiz": "위아래 위 위 [ ?? ]", "answer": "아래"},
-        {"quiz": "밤 너의 [ ?? ]이 들려와", "answer": "숨소리"},
-        {"quiz": "유리구슬 깨지지 않게 [ ?? ]해줘", "answer": "약속"},
+        {"quiz": "너의 [ ?? ]이 들려와", "answer": "숨소리"},
+        {"quiz": "깨지지 않게 [ ?? ]해줘 (유리구슬)", "answer": "약속"},
         {"quiz": "살짝 설렜어 난 [ ?? ]이 아니야", "answer": "장난"},
-        {"quiz": "아이 엠 내가 가는 길은 [ ?? ]", "answer": "빛"},
-        {"quiz": "오 마이 갓 너는 [ ?? ] 같아", "answer": "천사"},
-        {"quiz": "화 너의 [ ?? ]을 태워버려", "answer": "기억"},
-        {"quiz": "비올레타 너는 나의 [ ?? ]", "answer": "꽃"},
-        {"quiz": "미스터 너의 [ ?? ]을 보여줘", "answer": "마음"},
-        {"quiz": "점핑 점핑 모두 다 같이 [ ?? ]", "answer": "뛰어"},
-        {"quiz": "판도라 너의 [ ?? ]을 열어봐", "answer": "상자"},
-        {"quiz": "총 맞은 것처럼 정신이 너무 [ ?? ]", "answer": "없어"},
+        {"quiz": "내가 가는 길은 [ ?? ] (I AM)", "answer": "빛"},
+        {"quiz": "너는 [ ?? ] 같아 (Oh My God)", "answer": "천사"},
+        {"quiz": "너의 [ ?? ]을 태워버려 (화)", "answer": "기억"},
+        {"quiz": "너는 나의 [ ?? ] (비올레타)", "answer": "꽃"},
+        {"quiz": "너의 [ ?? ]을 보여줘 (Mr.)", "answer": "마음"},
+        {"quiz": "모두 다 같이 [ ?? ] (Jumping)", "answer": "뛰어"},
+        {"quiz": "너의 [ ?? ]을 열어봐 (Pandora)", "answer": "상자"},
+        {"quiz": "정신이 너무 [ ?? ] (총 맞은 것처럼)", "answer": "없어"},
         {"quiz": "가끔 미치게 네가 [ ?? ] 싶을 때가 있어", "answer": "보고"},
         {"quiz": "차가운 겨울바람이 불면 [ ?? ]가 생각나", "answer": "너"},
-        {"quiz": "이 소설의 끝을 다시 써보려 해 [ ?? ]이 되길", "answer": "해피엔딩"},
-        {"quiz": "우리 다시 만날 수 있을까 [ ?? ]처럼", "answer": "운명"},
-        {"quiz": "매일 매일 기다려 너를 [ ?? ]하며", "answer": "그리워"},
-        {"quiz": "그대 내게 다시 돌아오길 [ ?? ]해", "answer": "간절"},
+        {"quiz": "다시 써보려 해 [ ?? ]이 되길", "answer": "해피엔딩"},
+        {"quiz": "다시 만날 수 있을까 [ ?? ]처럼", "answer": "운명"},
+        {"quiz": "매일 기다려 너를 [ ?? ]하며", "answer": "그리워"},
+        {"quiz": "다시 돌아오길 [ ?? ]해", "answer": "간절"},
         {"quiz": "네가 내게 준 [ ?? ]을 기억해", "answer": "상처"},
         {"quiz": "사랑해 미안해 [ ?? ]는 말 못해", "answer": "고맙다"},
         {"quiz": "밤하늘의 [ ?? ]을 따서 너에게 줄게", "answer": "별"},
@@ -679,18 +686,18 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "내가 만약 괴로울 때면 내가 [ ?? ]가 되어줄게", "answer": "위로"},
         {"quiz": "우리의 [ ?? ]은 아직 끝나지 않았어", "answer": "노래"},
         {"quiz": "사랑은 [ ?? ]처럼 왔다가 가네", "answer": "바람"},
-        {"quiz": "너를 위해 노래할게 이 [ ?? ]이 끝날 때까지", "answer": "노래"},
+        {"quiz": "너를 위해 노래할게 이 [ ?? ]이 끝날 때까지", "answer": "순간"},
         {"quiz": "눈물이 나면 [ ?? ]를 봐", "answer": "하늘"},
-        {"quiz": "기억해 우리가 [ ?? ]했던 시간을", "answer": "함께"},
-        {"quiz": "사랑이 지나가면 [ ?? ]만 남겠지", "answer": "추억"},
+        {"quiz": "우리가 [ ?? ]했던 시간을 기억해", "answer": "함께"},
+        {"quiz": "지나가면 [ ?? ]만 남겠지 (사랑이 지나가면)", "answer": "추억"},
         {"quiz": "끝나지 않은 [ ?? ]을 들려줄게", "answer": "이야기"},
-        {"quiz": "시간을 되돌릴 수 있다면 [ ?? ]로 갈까", "answer": "과거"},
+        {"quiz": "되돌릴 수 있다면 [ ?? ]로 갈까", "answer": "과거"},
         {"quiz": "우리의 [ ?? ]을 약속해", "answer": "영원"},
         {"quiz": "이 밤이 지나면 너를 [ ?? ] 수 있을까", "answer": "잊을"},
         {"quiz": "사랑은 [ ?? ]처럼 달콤해", "answer": "초콜릿"},
-        {"quiz": "너를 향한 나의 [ ?? ]은 멈추지 않아", "answer": "질주"},
+        {"quiz": "나의 [ ?? ]은 멈추지 않아", "answer": "질주"},
         {"quiz": "네가 없는 세상은 [ ?? ] 같아", "answer": "지옥"},
-        {"quiz": "우린 서로에게 [ ?? ]가 되어주자", "answer": "빛"},
+        {"quiz": "서로에게 [ ?? ]가 되어주자", "answer": "빛"},
         {"quiz": "너를 만나고 내 [ ?? ]이 바뀌었어", "answer": "인생"},
         {"quiz": "너의 [ ?? ]을 지켜줄게", "answer": "눈물"},
         {"quiz": "사랑은 [ ?? ]처럼 갑자기 찾아와", "answer": "소나기"},
@@ -715,7 +722,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "너의 [ ?? ]가 되어줄게", "answer": "안식처"},
         {"quiz": "너와 함께라면 [ ?? ] 없어", "answer": "겁"},
         {"quiz": "너의 [ ?? ]을 믿어", "answer": "진심"},
-        {"quiz": "너를 사랑하는 게 나의 [ ?? ]야", "answer": "전부"},
+        {"quiz": "사랑하는 게 나의 [ ?? ]야", "answer": "전부"},
         {"quiz": "사랑은 [ ?? ]을 멈추게 해", "answer": "시간"},
         {"quiz": "너의 [ ?? ]를 기억할게", "answer": "향기"},
         {"quiz": "우리의 [ ?? ]은 영원할 거야", "answer": "사랑"},
@@ -727,13 +734,13 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "아모르 [ ?? ]", "answer": "파티"},
         {"quiz": "내 나이가 [ ?? ]어서", "answer": "어때"},
         {"quiz": "무조건 무조건 [ ?? ]야", "answer": "이야"},
-        {"quiz": "땡벌 땡벌 난 이제 [ ?? ]었어", "answer": "지쳤"},
+        {"quiz": "난 이제 [ ?? ]었어 (땡벌)", "answer": "지쳤"},
         {"quiz": "사랑은 아무나 [ ?? ]", "answer": "하나"},
         {"quiz": "곤드레 [ ?? ]", "answer": "만드레"},
-        {"quiz": "동반자 당신은 나의 [ ?? ]", "answer": "동반자"},
+        {"quiz": "당신은 나의 [ ?? ] (동반자)", "answer": "동반자"},
         {"quiz": "안동 [ ?? ]에서", "answer": "역"},
         {"quiz": "보릿 [ ?? ]", "answer": "고개"},
-        {"quiz": "초혼 그대여 [ ?? ]", "answer": "다시"},
+        {"quiz": "그대여 [ ?? ] (초혼)", "answer": "다시"},
         {"quiz": "사랑아 [ ?? ] 사랑아", "answer": "내"},
         {"quiz": "사랑의 [ ?? ]", "answer": "배터리"},
         {"quiz": "어머나 [ ?? ]마", "answer": "어머"},
@@ -750,20 +757,20 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "번지 없는 [ ?? ]", "answer": "주막"},
         {"quiz": "꿈에 본 [ ?? ]", "answer": "내고향"},
         {"quiz": "봄바람 휘날리며 흩날리는 [ ?? ] 잎이", "answer": "벚꽃"},
-        {"quiz": "반짝반짝 작은 별 아름답게 [ ?? ]네", "answer": "비치"},
-        {"quiz": "산토끼 토끼야 어디를 [ ?? ]느냐", "answer": "가"},
+        {"quiz": "아름답게 [ ?? ]네 (작은 별)", "answer": "비치"},
+        {"quiz": "어디를 [ ?? ]느냐 (산토끼)", "answer": "가"},
         {"quiz": "학교 종이 [ ?? ]친다 어서 모이자", "answer": "땡땡땡"},
-        {"quiz": "곰 세 마리가 [ ?? ] 집에 있어", "answer": "한"},
-        {"quiz": "원숭이 엉덩이는 [ ?? ] 빨가면 사과", "answer": "빨개"},
+        {"quiz": "세 마리가 [ ?? ] 집에 있어", "answer": "한"},
+        {"quiz": "엉덩이는 [ ?? ] 빨가면 사과", "answer": "빨개"},
         {"quiz": "비행기 날아라 [ ?? ]라", "answer": "높이"},
-        {"quiz": "꼬부랑 [ ?? ]가 꼬부랑 고갯길을", "answer": "할머니"},
-        {"quiz": "섬집 아기 엄마가 [ ?? ] 가러 가면", "answer": "굴"},
+        {"quiz": "꼬부랑 [ ?? ]가 고갯길을 (꼬부랑 할머니)", "answer": "할머니"},
+        {"quiz": "엄마가 [ ?? ] 가러 가면 (섬집 아기)", "answer": "굴"},
         {"quiz": "코끼리 아저씨는 [ ?? ]가 손이래", "answer": "코"},
-        {"quiz": "개울가에 [ ?? ] 한 마리", "answer": "올챙이"},
-        {"quiz": "나비야 나비야 이리 날아 [ ?? ]라", "answer": "오"},
+        {"quiz": "개울가에 [ ?? ] 한 마리 (올챙이와 개구리)", "answer": "올챙이"},
+        {"quiz": "이리 날아 [ ?? ]라 (나비야)", "answer": "오"},
         {"quiz": "머리 어깨 [ ?? ] 발", "answer": "무릎"},
         {"quiz": "그대로 [ ?? ]라", "answer": "멈춰"},
-        {"quiz": "옹달샘 누가 와서 [ ?? ]요", "answer": "먹나"},
+        {"quiz": "누가 와서 [ ?? ]요 (옹달샘)", "answer": "먹나"},
         {"quiz": "기차 길 옆 [ ?? ] 아기", "answer": "옥수수"},
         {"quiz": "햇볕은 [ ?? ] 반짝", "answer": "쨍쨍"},
         {"quiz": "꼭꼭 [ ?? ] 머리카락 보일라", "answer": "숨어라"},
@@ -771,7 +778,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "아빠 힘내세요 [ ?? ]가 있잖아요", "answer": "우리"},
         {"quiz": "꼬마 눈사람 [ ?? ] 눈사람", "answer": "하얀"},
         {"quiz": "멋쟁이 [ ?? ] 울퉁불퉁", "answer": "토마토"},
-        {"quiz": "뽀로로 노는 게 제일 [ ?? ]", "answer": "좋아"},
+        {"quiz": "노는 게 제일 [ ?? ] (뽀로로)", "answer": "좋아"},
         {"quiz": "태극기가 [ ?? ]입니다", "answer": "바람에"},
         {"quiz": "어린이날 [ ?? ]들은 자란다", "answer": "우리"},
         {"quiz": "스승의 은혜는 [ ?? ] 같아서", "answer": "하늘"},
@@ -779,15 +786,15 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "사랑이라는 [ ?? ]로 너를 가두고 싶지 않아", "answer": "이름"},
         {"quiz": "우린 너무 [ ?? ]을 사랑했었나 봐", "answer": "서로"},
         {"quiz": "너와 함께 걷던 이 [ ?? ]을 기억해", "answer": "거리"},
-        {"quiz": "꿈결처럼 감미로운 [ ?? ]의 속삭임", "answer": "그대"},
-        {"quiz": "사랑은 향기를 남기고 [ ?? ]은 눈물을 남기고", "answer": "이별"},
+        {"quiz": "감미로운 [ ?? ]의 속삭임", "answer": "그대"},
+        {"quiz": "향기를 남기고 [ ?? ]은 눈물을 남기고", "answer": "이별"},
         {"quiz": "너에게 난 [ ?? ]이 되고 싶어", "answer": "우주"},
         {"quiz": "오랜 시간 동안 [ ?? ]해온 나의 사랑", "answer": "간직"},
         {"quiz": "눈을 감으면 자꾸만 [ ?? ]오르는 그 얼굴", "answer": "떠"},
         {"quiz": "나의 밤은 깊어만 가고 [ ?? ]이 없는 이 밤", "answer": "끝"},
         {"quiz": "어디에도 없는 [ ?? ] 너의 곁에 있을게", "answer": "기억"},
         {"quiz": "흩날리는 기억들 속에 [ ?? ]을 찾아봐", "answer": "조각"},
-        {"quiz": "그대 내 품에 안겨 눈을 [ ?? ]요", "answer": "감아"},
+        {"quiz": "내 품에 안겨 눈을 [ ?? ]요", "answer": "감아"},
         {"quiz": "어둠 속에서 빛을 찾아 [ ?? ]이는 나", "answer": "헤매"},
         {"quiz": "사랑하고 싶어 죽을 만큼 [ ?? ]하고 싶어", "answer": "사랑"},
         {"quiz": "우리의 사랑은 [ ?? ]처럼 짧았지", "answer": "여름밤"},
@@ -795,7 +802,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "이 밤의 끝을 잡고 있는 나의 [ ?? ]", "answer": "미련"},
         {"quiz": "우리는 서로에게 [ ?? ]가 되어주었지", "answer": "등불"},
         {"quiz": "그대여 [ ?? ]을 잊지 말아요", "answer": "오늘"},
-        {"quiz": "너의 그 한마디 말도 그 [ ?? ]도 나에겐 커다란 의미", "answer": "웃음"},
+        {"quiz": "너의 그 한마디 말도 그 [ ?? ]도 나에겐 의미", "answer": "웃음"},
         {"quiz": "겁이 나지만 [ ?? ]밖에 난 몰라", "answer": "사랑"},
         {"quiz": "우리의 [ ?? ]을 위해 건배", "answer": "행복"},
         {"quiz": "시간아 [ ?? ]라 더 빨리 달려라", "answer": "멈춰"},
@@ -806,12 +813,12 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "안녕은 영원한 [ ?? ]은 아니겠지요", "answer": "헤어짐"},
         {"quiz": "여우야 여우야 뭐하니 [ ?? ] 잔다", "answer": "잠"},
         {"quiz": "작은 [ ?? ] 노래하며 날아갑니다", "answer": "새"},
-        {"quiz": "산바람 강바람 [ ?? ] 바람", "answer": "시원한"},
+        {"quiz": "시원한 [ ?? ] 바람 (산바람 강바람)", "answer": "시원한"},
         {"quiz": "나뭇잎 배 [ ?? ] 띄워", "answer": "살짝"},
         {"quiz": "눈을 감고 [ ?? ]을 들어봐요", "answer": "노래"},
         {"quiz": "모두 다 같이 [ ?? ]", "answer": "박수"},
         {"quiz": "네모난 [ ?? ] 속에 담긴 세상", "answer": "상자"},
-        {"quiz": "네가 [ ?? ]보다 조금 더 높은 곳에 니가 있을 뿐", "answer": "나"},
+        {"quiz": "조금 더 높은 곳에 [ ?? ]가 있을 뿐", "answer": "니"},
         {"quiz": "비 오는 거리에서 그대 [ ?? ]를 생각해요", "answer": "모습"},
         {"quiz": "언젠간 가겠지 푸르른 이 [ ?? ]", "answer": "청춘"},
         {"quiz": "붉은 노을처럼 난 너를 [ ?? ]해", "answer": "사랑"},
@@ -824,22 +831,22 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "나를 봐요 [ ?? ] 보지 말고", "answer": "딴데"},
         {"quiz": "청바지가 잘 어울리는 [ ?? ]", "answer": "여자"},
         {"quiz": "저 푸른 초원 위에 [ ?? ]을 짓고", "answer": "그림같은집"},
-        {"quiz": "사랑밖에 난 몰라 그대 내 곁에 [ ?? ]으면", "answer": "있어준다면"},
+        {"quiz": "그대 내 곁에 [ ?? ]으면 (사랑밖에 난 몰라)", "answer": "있어준다면"},
         {"quiz": "우리 만남은 [ ?? ]이 아니야", "answer": "우연"},
         {"quiz": "그대 앞에만 서면 나는 왜 [ ?? ]해지는가", "answer": "작아"},
         {"quiz": "우리 몸엔 우리 [ ?? ]", "answer": "것이좋은것이여"},
         {"quiz": "찰랑찰랑 [ ?? ]이 넘치네", "answer": "술잔"},
         {"quiz": "무조건 무조건 [ ?? ]야", "answer": "이야"},
-        {"quiz": "둥글게 둥글게 빙글빙글 [ ?? ]가며", "answer": "돌아"},
-        {"quiz": "파란 나라를 보았니 [ ?? ]이 가득한", "answer": "꿈과사랑"},
+        {"quiz": "빙글빙글 [ ?? ]가며 (둥글게 둥글게)", "answer": "돌아"},
+        {"quiz": "보았니 [ ?? ]이 가득한 (파란 나라)", "answer": "꿈과사랑"},
         {"quiz": "어젯밤 자정 무렵 [ ?? ] 아빠가 나를 불렀지", "answer": "술취하신"},
         {"quiz": "뒷다리가 쑥 [ ?? ]다리가 쑥", "answer": "앞"},
         {"quiz": "정글 숲을 지나서 [ ?? ] 가네", "answer": "가자"},
-        {"quiz": "반짝반짝 작은 별 아름답게 [ ?? ]네", "answer": "비치"},
+        {"quiz": "아름답게 [ ?? ]네 (작은 별)", "answer": "비치"},
         {"quiz": "나뭇잎 배 [ ?? ] 띄워", "answer": "살짝"},
         {"quiz": "나의 살던 고향은 [ ?? ] 꽃 피는 산골", "answer": "꽃피는"},
         {"quiz": "아카시아 꽃이 활짝 피었네 [ ?? ] 꽃이 활짝 피었네", "answer": "하얀"},
-        {"quiz": "겨울 바람 손이 시려워 [ ?? ]이 시려워", "answer": "발"},
+        {"quiz": "손이 시려워 [ ?? ]이 시려워 (겨울 바람)", "answer": "발"},
         {"quiz": "주위를 둘러보면 온통 [ ?? ] 것들뿐", "answer": "네모난"},
         {"quiz": "노란 풍선이 [ ?? ]로 날아가면", "answer": "하늘"},
         {"quiz": "단지 널 사랑해 이렇게 [ ?? ]", "answer": "말했지"},
@@ -850,16 +857,41 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "그만하자 그만하자 [ ?? ]만 하니까", "answer": "사랑"},
         {"quiz": "이 밤 그날의 [ ?? ]을 당신의 창 가까이 보낼게요", "answer": "반딧불"},
         {"quiz": "나는요 [ ?? ]이 좋은걸", "answer": "오빠"},
-        {"quiz": "우리가 만나 [ ?? ]지 못할 추억이 됐다", "answer": "지우"}
+        {"quiz": "우리가 만나 [ ?? ]지 못할 추억이 됐다", "answer": "지우"},
+        {"quiz": "나를 [ ?? ]하지 마라 아직도 나는 너를", "answer": "미워"},
+        {"quiz": "이젠 [ ?? ]이 되어버린 너의 목소리", "answer": "환상"},
+        {"quiz": "우리 함께 [ ?? ]던 그 길을 걸어봐", "answer": "걷"},
+        {"quiz": "차가운 [ ?? ]가 내리는 날엔 네가 생각나", "answer": "빗줄기"},
+        {"quiz": "너의 [ ?? ]을 보면 내 마음이 떨려와", "answer": "눈빛"},
+        {"quiz": "우리의 [ ?? ]을 위해 마지막 잔을 비워", "answer": "이별"},
+        {"quiz": "영원할 것 같았던 우리의 [ ?? ]", "answer": "맹세"},
+        {"quiz": "내 마음속에 [ ?? ]처럼 남겨진 너", "answer": "흉터"},
+        {"quiz": "너를 향한 나의 [ ?? ]은 변함없어", "answer": "그리움"},
+        {"quiz": "달콤한 [ ?? ]로 나를 속이지 마", "answer": "유혹"},
+        {"quiz": "어둠 속에서 나를 [ ?? ]줄 사람은 너뿐이야", "answer": "구해"},
+        {"quiz": "너의 [ ?? ]를 따라 여기까지 왔어", "answer": "흔적"},
+        {"quiz": "사랑은 [ ?? ]처럼 왔다가 연기처럼 사라져", "answer": "안개"},
+        {"quiz": "너의 [ ?? ]에 기대어 잠들고 싶어", "answer": "어깨"},
+        {"quiz": "무심코 던진 [ ?? ]에 내 마음은 무너져", "answer": "한마디"},
+        {"quiz": "너와 나 사이엔 [ ?? ] 수 없는 벽이 있어", "answer": "넘을"},
+        {"quiz": "시간이 흐를수록 [ ?? ]해지는 너의 얼굴", "answer": "희미"},
+        {"quiz": "나의 [ ?? ]을 다해 너를 사랑했어", "answer": "진심"},
+        {"quiz": "꿈속에서도 너를 [ ?? ]헤매는 나", "answer": "찾아"},
+        {"quiz": "우리의 [ ?? ]은 여기까지인가 봐", "answer": "인연"}
     ]
 
-    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!**\n10문제를 가장 많이 맞힌 분께 **30,000원**을 드립니다!\n(제한 시간 20초 | 10초 후 초성 힌트!)")
+    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!** (중단: `/야그만해`)\n10문제를 가장 많이 맞힌 분께 **30,000원**을 드립니다!")
     await asyncio.sleep(2)
 
     current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
     scoreboard = {}
 
     for i, selected in enumerate(current_game_pool, 1):
+        # 🛑 중단 체크
+        if not active_games.get(guild_id):
+            await interaction.channel.send("🛑 **게임이 강제 중단되었습니다.**")
+            return
+
         quiz_text = selected["quiz"]
         answer_raw = selected["answer"]
         answer_text = answer_raw.replace(" ", "")
@@ -878,10 +910,10 @@ async def 가사빈칸(interaction: discord.Interaction):
                    not m.author.bot
 
         try:
-            # 1단계: 첫 10초 대기
             msg = await bot.wait_for('message', check=check, timeout=10.0)
         except asyncio.TimeoutError:
-            # 2단계: 10초 동안 정답 없으면 초성 힌트 공개
+            if not active_games.get(guild_id): return # 중단 체크
+            
             hint_embed = discord.Embed(
                 title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 힌트 등장!",
                 description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n\n⏱️ **남은 시간:** 10초",
@@ -890,7 +922,6 @@ async def 가사빈칸(interaction: discord.Interaction):
             await quiz_msg.edit(embed=hint_embed)
             
             try:
-                # 남은 10초 대기
                 msg = await bot.wait_for('message', check=check, timeout=10.0)
             except asyncio.TimeoutError:
                 await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_raw}]**였습니다.")
@@ -903,7 +934,8 @@ async def 가사빈칸(interaction: discord.Interaction):
         if i < 10:
             await asyncio.sleep(2)
 
-    # 최종 결과 및 보상 지급 로직 (기존과 동일)
+    active_games[guild_id] = False # 게임 종료 상태로 변경
+
     if not scoreboard:
         await interaction.channel.send("🏁 **게임 종료!** 우승자가 없습니다.")
         return
@@ -925,6 +957,18 @@ async def 가사빈칸(interaction: discord.Interaction):
         winner_mentions.append(winner_obj.mention)
 
     await interaction.channel.send(f"🎊 우승자 {', '.join(winner_mentions)}님께 상금 **{reward:,}원**을 지급했습니다!")
+
+# =====================
+# 명령어: 야그만해
+# =====================
+@bot.tree.command(name="야그만해", description="진행 중인 퀴즈 게임을 즉시 중단합니다.")
+async def 중단(interaction: discord.Interaction):
+    guild_id = interaction.guild_id
+    if active_games.get(guild_id):
+        active_games[guild_id] = False
+        await interaction.response.send_message("🛑 게임 중단 요청을 완료했습니다.")
+    else:
+        await interaction.response.send_message("❓ 현재 진행 중인 게임이 없습니다.", ephemeral=True)
 
 # =====================
 # 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
