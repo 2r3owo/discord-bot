@@ -5,12 +5,11 @@ import yt_dlp
 import datetime
 import asyncio
 from collections import deque  # 대기열을 위한 deque 
-import os
 
 # =====================
 # 설정 부분
 # =====================
-TOKEN = os.getenv('DISCORD_TOKEN')
+TOKEN = "MTQ2OTE4NTc1NzcyMDg3NTEyOQ.Guo_qF.Ihas_V1gHLPbd85Tb5-Qz-N0szG7O2wK7Xdov4" 
 CHANNEL_ID = None
 
 intents = discord.Intents.default()
@@ -677,8 +676,8 @@ async def help_command(interaction: discord.Interaction):
     # 일상 & 운세
     embed.add_field(
         name="🔮 일상 & 운세",
-        value="`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
-              "`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.\n"
+       value="""`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.
+`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.""",
         inline=False
     )
 
