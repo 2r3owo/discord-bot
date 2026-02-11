@@ -4,8 +4,7 @@ import random
 import yt_dlp
 import asyncio
 import os
-from collections import deque  # 대기열을 위한 deque
-
+from collections import deque
 from datetime import datetime, timezone, timedelta
 
 # 초성을 추출하는 함수
@@ -21,6 +20,10 @@ def get_chosung(text):
             result += char
     return result
 
+# 한국 시간(KST) 설정 함수
+def now_kst():
+    return datetime.now(timezone(timedelta(hours=9)))
+
 # =====================
 # 설정 부분
 # =====================
@@ -33,13 +36,35 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 데이터 저장 딕셔너리
-user_fortune_data = {}
-user_match_data = {}
+# =====================
+# 데이터 저장 및 관리 (서버별 독립 구조)
+# =====================
+# 구조: {str(guild_id): {str(user_id): value}}
 user_money = {}
 user_daily_pay = {}
 user_lotto_count = {}
 user_inventory = {}
+user_fortune_data = {}
+user_match_data = {}
+active_games = {}  # 퀴즈 중단 방지용
+
+# [서버별 데이터를 안전하게 가져오기 위한 함수]
+def get_user_data(data_dict, guild_id, user_id, default_value):
+    g_id = str(guild_id)
+    u_id = str(user_id)
+    if g_id not in data_dict:
+        data_dict[g_id] = {}
+    if u_id not in data_dict[g_id]:
+        data_dict[g_id][u_id] = default_value
+    return data_dict[g_id][u_id]
+
+# [서버별 데이터를 저장하기 위한 함수]
+def set_user_data(data_dict, guild_id, user_id, value):
+    g_id = str(guild_id)
+    u_id = str(user_id)
+    if g_id not in data_dict:
+        data_dict[g_id] = {}
+    data_dict[g_id][u_id] = value
 
 # 노래 대기열 저장소 (서버별 관리)
 queues = {}
@@ -339,116 +364,139 @@ async def 궁합(interaction: discord.Interaction, user: discord.Member): # 1. c
     await interaction.response.send_message(embed=embed)
 
 # =====================
-# 경제 시스템: 돈내놔 (슬래시 커맨드 버전)
+# 경제 시스템: 돈내놔 (서버별 독립 버전)
 # =====================
-@bot.tree.command(name="돈내놔", description="하루 3번, 10,000원씩 지원금을 받습니다.")
-async def 돈내놔(interaction: discord.Interaction): # ctx -> interaction
-    user_id = interaction.user.id # ctx.author -> interaction.user
-    today = now_kst().date()
+@bot.tree.command(name="돈내놔", description="이 서버에서 하루 3번, 10,000원씩 지원금을 받습니다.")
+async def 돈내놔(interaction: discord.Interaction):
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    today = str(now_kst().date())
 
-    # 초기 데이터 설정 (기존 로직 유지)
-    if user_id not in user_money:
-        user_money[user_id] = 0
-    if user_id not in user_daily_pay:
-        user_daily_pay[user_id] = [today, 0]
+    # 1. 일일 횟수 정보 가져오기 (없으면 [오늘날짜, 0회]로 시작)
+    # 데이터 구조: [날짜문자열, 횟수]
+    daily_info = get_user_data(user_daily_pay, g_id, u_id, [today, 0])
 
-    # 날짜가 바뀌었으면 횟수 초기화
-    if user_daily_pay[user_id][0] != today:
-        user_daily_pay[user_id] = [today, 0]
+    # 2. 날짜가 바뀌었으면 횟수 초기화
+    if daily_info[0] != today:
+        daily_info = [today, 0]
 
-    if user_daily_pay[user_id][1] < 3:
-        user_money[user_id] += 10000
-        user_daily_pay[user_id][1] += 1
-        count = user_daily_pay[user_id][1]
-        # ctx.send -> interaction.response.send_message
-        await interaction.response.send_message(f"💰 {interaction.user.mention}님께 10,000원을 드렸습니다! (오늘 {count}/3회 수행)\n현재 잔액: {user_money[user_id]:,}원")
+    # 3. 3회 미만인지 확인
+    if daily_info[1] < 3:
+        # 이 서버의 현재 잔액 가져오기
+        current_money = get_user_data(user_money, g_id, u_id, 0)
+        
+        # 돈 추가 및 저장
+        new_money = current_money + 10000
+        set_user_data(user_money, g_id, u_id, new_money)
+        
+        # 횟수 추가 및 저장
+        daily_info[1] += 1
+        set_user_data(user_daily_pay, g_id, u_id, daily_info)
+        
+        await interaction.response.send_message(
+            f"💰 {interaction.user.mention}님께 **이 서버 전용** 지원금 10,000원을 드렸습니다!\n"
+            f"📅 오늘 횟수: {daily_info[1]}/3회\n"
+            f"💵 현재 서버 잔액: {new_money:,}원"
+        )
     else:
-        await interaction.response.send_message(f"⚠️ 오늘은 이미 3번 다 받으셨어요! 내일 다시 오세요.", ephemeral=True)
+        await interaction.response.send_message(
+            f"⚠️ 이 서버에서는 오늘 이미 3번 다 받으셨어요! 내일 다시 오세요.", 
+            ephemeral=True
+        )
+# =====================
+# 경제 시스템: 잔고 (서버별 독립 버전)
+# =====================
+@bot.tree.command(name="잔고", description="이 서버에서 보유 중인 잔액을 확인합니다.")
+async def 잔고(interaction: discord.Interaction):
+    # interaction.guild.id를 사용해 현재 서버의 잔고를 가져옵니다.
+    # get_user_data 함수를 사용하여 데이터가 없을 경우 기본값 0을 반환합니다.
+    money = get_user_data(user_money, interaction.guild.id, interaction.user.id, 0)
+    
+    await interaction.response.send_message(
+        f"💵 {interaction.user.mention}님의 **현재 서버** 잔고는 **{money:,}원**입니다."
+    )
 
 # =====================
-# 경제 시스템: 잔고 (슬래시 커맨드 버전)
-# =====================
-@bot.tree.command(name="잔고", description="현재 보유 중인 잔액을 확인합니다.")
-async def 잔고(interaction: discord.Interaction): # ctx -> interaction
-    money = user_money.get(interaction.user.id, 0) # ctx.author -> interaction.user
-    # ctx.send -> interaction.response.send_message
-    await interaction.response.send_message(f"💵 {interaction.user.mention}님의 현재 잔고는 **{money:,}원**입니다.")
-
-# =====================
-# 도박: 홀짝맞추기 (슬래시 커맨드 버전)
+# 도박: 홀짝맞추기 (서버별 독립 버전)
 # =====================
 @bot.tree.command(name="홀짝", description="배팅금을 걸고 홀/짝을 맞춥니다. (성공 시 2배!)")
-async def 홀짝(interaction: discord.Interaction, bet: int, pick: str): # ctx 대신 interaction 사용
-    user_id = interaction.user.id
-    current_money = user_money.get(user_id, 0)
+async def 홀짝(interaction: discord.Interaction, bet: int, pick: str):
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    
+    # 이 서버의 현재 잔고 가져오기
+    current_money = get_user_data(user_money, g_id, u_id, 0)
 
-    # 1. 예외 처리 로직 (기존과 동일)
+    # 1. 예외 처리
     if bet <= 0:
         return await interaction.response.send_message("❌ 1원 이상 배팅해야 합니다.", ephemeral=True)
     
     if current_money < bet:
-        return await interaction.response.send_message(f"❌ 잔액이 부족합니다. (현재: {current_money:,}원)", ephemeral=True)
+        return await interaction.response.send_message(f"❌ 이 서버의 잔액이 부족합니다. (현재: {current_money:,}원)", ephemeral=True)
     
     if pick not in ['홀', '짝']:
         return await interaction.response.send_message("❓ `홀` 또는 `짝` 중에서 선택해 주세요.", ephemeral=True)
 
-    # 2. 게임 결과 계산 (기존과 동일)
+    # 2. 게임 결과 계산
     result = random.choice(['홀', '짝'])
     
     if pick == result:
-        user_money[user_id] += bet
-        # 3. 결과 전송 (interaction.response.send_message)
+        # 성공: 잔고에 배팅금 합산 후 저장
+        new_money = current_money + bet
+        set_user_data(user_money, g_id, u_id, new_money)
+        
         await interaction.response.send_message(
             f"🎊 결과는 **[{result}]**! 성공했습니다! \n"
-            f"💰 {bet:,}원을 얻어 현재 잔고는 **{user_money[user_id]:,}원**입니다."
+            f"💰 {bet:,}원을 얻어 현재 **이 서버** 잔고는 **{new_money:,}원**입니다."
         )
     else:
-        user_money[user_id] -= bet
-        # 3. 결과 전송
+        # 실패: 잔고에서 배팅금 차감 후 저장
+        new_money = current_money - bet
+        set_user_data(user_money, g_id, u_id, new_money)
+        
         await interaction.response.send_message(
             f"💀 결과는 **[{result}]**... 아쉽게 실패했습니다. \n"
-            f"💸 {bet:,}원을 잃어 현재 잔고는 **{user_money[user_id]:,}원**입니다."
+            f"💸 {bet:,}원을 잃어 현재 **이 서버** 잔고는 **{new_money:,}원**입니다."
         )
+    
 
 # =====================
-# 도박: 로또 (슬래시 커맨드 버전)
+# 도박: 로또 (서버별 독립 버전)
 # =====================
-@bot.tree.command(name="로또", description="로또를 구매합니다. (1,000원, 하루 15회 제한)")
-async def 로또(interaction: discord.Interaction): # ctx -> interaction
-    user_id = interaction.user.id # ctx.author -> interaction.user
-    today = now_kst().date()
-    current_money = user_money.get(user_id, 0)
+@bot.tree.command(name="로또", description="로또를 구매합니다. (1,000원, 서버별 하루 15회 제한)")
+async def 로또(interaction: discord.Interaction):
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    today = str(now_kst().date())
     lotto_price = 1000
 
-    # 1. 로또 횟수 데이터 초기화 및 날짜 체크 (기존 로직 유지)
-    if user_id not in user_lotto_count:
-        user_lotto_count[user_id] = [today, 0]
-    
-    # 날짜가 바뀌었으면 횟수 리셋
-    if user_lotto_count[user_id][0] != today:
-        user_lotto_count[user_id] = [today, 0]
+    # 1. 데이터 가져오기 (서버별 독립)
+    current_money = get_user_data(user_money, g_id, u_id, 0)
+    count_info = get_user_data(user_lotto_count, g_id, u_id, [today, 0])
 
-    # 2. 횟수 제한 체크 (15회)
-    if user_lotto_count[user_id][1] >= 15:
+    # 2. 날짜가 바뀌었으면 해당 서버의 횟수 리셋
+    if count_info[0] != today:
+        count_info = [today, 0]
+
+    # 3. 횟수 제한 체크 (15회)
+    if count_info[1] >= 15:
         return await interaction.response.send_message(
-            f"⚠️ {interaction.user.mention}님, 로또는 하루에 15번까지만 구매할 수 있습니다! 내일 다시 도전하세요.", 
+            f"⚠️ {interaction.user.mention}님, **이 서버**에서는 하루 15번까지만 구매할 수 있습니다!", 
             ephemeral=True
         )
 
-    # 3. 잔액 체크
+    # 4. 잔액 체크 (이 서버의 돈이 충분한지)
     if current_money < lotto_price:
         return await interaction.response.send_message(
-            f"❌ 잔액이 부족합니다. 로또는 {lotto_price:,}원입니다.", 
+            f"❌ **이 서버의 잔액**이 부족합니다. (로또 {lotto_price:,}원)", 
             ephemeral=True
         )
 
-    # 4. 로또 실행
-    user_money[user_id] -= lotto_price
-    user_lotto_count[user_id][1] += 1 # 구매 횟수 증가
-    current_count = user_lotto_count[user_id][1]
-
+    # 5. 로또 실행 및 차감
+    current_money -= lotto_price
+    count_info[1] += 1
+    
     draw = random.randint(1, 100)
-
     if draw == 1:
         win = 50000
         res = "🎊 대박!! 로또 1등 당첨! 🎊"
@@ -462,130 +510,145 @@ async def 로또(interaction: discord.Interaction): # ctx -> interaction
         win = 0
         res = "😭 아쉽게도 꽝입니다..."
 
-    user_money[user_id] += win
-    
-    # 5. 결과 임베드 전송 (interaction 기반으로 수정)
-    embed = discord.Embed(title="🎟️ 로또 결과", description=res, color=0x00ff00 if win > 0 else 0xff0000)
+    # 결과 저장 (돈 증가 및 횟수 업데이트)
+    current_money += win
+    set_user_data(user_money, g_id, u_id, current_money)
+    set_user_data(user_lotto_count, g_id, u_id, count_info)
+
+    # 6. 결과 임베드 생성
+    embed = discord.Embed(
+        title="🎟️ 서버별 로또 결과", 
+        description=res, 
+        color=0x00ff00 if win > 0 else 0xff0000
+    )
     if win > 0:
         embed.add_field(name="당첨금", value=f"{win:,}원")
     
-    embed.add_field(name="현재 잔고", value=f"{user_money[user_id]:,}원", inline=True)
-    embed.add_field(name="오늘 구매 횟수", value=f"{current_count} / 15회", inline=True)
+    embed.add_field(name="이 서버 잔고", value=f"{current_money:,}원", inline=True)
+    embed.add_field(name="오늘 구매 횟수", value=f"{count_info[1]} / 15회", inline=True)
     embed.set_footer(text="지나친 도박은 가산을 탕진합니다.")
     
-    # 최종 전송
     await interaction.response.send_message(embed=embed)
 
 # ===================== 
-# 경제 시스템: 데이터 설정
+# 경제 시스템: 낚시 시스템 (서버별 독립 버전)
 # ===================== 
 
-FISH_DATA = {
-    # --- 기존 항목 ---
-    "👟 장화": {"price": 50, "chance": 25},
-    "🐟 피라미": {"price": 1000, "chance": 30},
-    "🐠 고등어": {"price": 3000, "chance": 20},
-    "🐡 복어": {"price": 5000, "chance": 15},
-    "🦈 상어": {"price": 20000, "chance": 10},
-    "🐳 고래": {"price": 50000, "chance": 5},
-    "🪼 해파리": {"price": 1500, "chance": 20},
-    "🦐 새우": {"price": 800, "chance": 25},
-    "🐙 문어": {"price": 4500, "chance": 12},
-    "🦀 게": {"price": 2500, "chance": 18},
-    "🐢 거북이": {"price": 15000, "chance": 7},
-    "🫵 해마": {"price": 2000, "chance": 50}
-}
-@bot.tree.command(name="낚시", description="낚싯대를 던져 물고기를 잡습니다.")
+@bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
 async def 낚시(interaction: discord.Interaction):
-    user_id = interaction.user.id
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
     
-    # 인벤토리 초기화 (기존 로직)
-    if user_id not in user_inventory:
-        user_inventory[user_id] = {}
+    # 1. 이 서버 전용 인벤토리 가져오기
+    inventory = get_user_data(user_inventory, g_id, u_id, {})
 
-    # 첫 응답은 send_message로 보냅니다.
+    # 첫 응답 전송
     await interaction.response.send_message(f"🎣 {interaction.user.display_name}님이 낚싯대를 던졌습니다... (기다리는 중)")
-    await asyncio.sleep(2) # 2초 대기
+    await asyncio.sleep(2) 
 
-    # 확률 기반 낚시 로직 (기존 로직)
+    # 2. 확률 기반 낚시 로직
     fish_names = list(FISH_DATA.keys())
     fish_weights = [f["chance"] for f in FISH_DATA.values()]
     caught_fish = random.choices(fish_names, weights=fish_weights, k=1)[0]
 
-    # 인벤토리에 추가
-    user_inventory[user_id][caught_fish] = user_inventory[user_id].get(caught_fish, 0) + 1
+    # 3. 이 서버 인벤토리에 추가 및 저장
+    inventory[caught_fish] = inventory.get(caught_fish, 0) + 1
+    set_user_data(user_inventory, g_id, u_id, inventory)
     
     embed = discord.Embed(title="🎣 낚시 성공!", description=f"와우! **{caught_fish}**를 잡았습니다!", color=0x3498db)
-    embed.set_footer(text=f"현재 보관함에 {caught_fish} {user_inventory[user_id][caught_fish]}마리 보유 중")
+    embed.set_footer(text=f"현재 이 서버 보관함에 {caught_fish} {inventory[caught_fish]}마리 보유 중")
     
-    # 낚시 중이라는 메시지 이후에 결과를 추가로 보낼 때는 follow-up을 사용합니다.
     await interaction.followup.send(embed=embed)
 
-@bot.tree.command(name="보관함", description="내가 잡은 물고기 목록을 확인합니다.")
+@bot.tree.command(name="보관함", description="현재 서버에서 잡은 물고기 목록을 확인합니다.")
 async def 보관함(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    inventory = user_inventory.get(user_id, {})
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    
+    # 이 서버의 인벤토리만 가져옴
+    inventory = get_user_data(user_inventory, g_id, u_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
-        return await interaction.response.send_message("텅~ 보관함이 비어있습니다. 낚시를 먼저 해보세요!", ephemeral=True)
+        return await interaction.response.send_message("텅~ 이 서버 보관함이 비어있습니다. 낚시를 먼저 해보세요!", ephemeral=True)
 
     msg = "\n".join([f"{name}: {count}마리" for name, count in inventory.items() if count > 0])
-    embed = discord.Embed(title=f"🎒 {interaction.user.display_name}님의 보관함", description=msg, color=0x95a5a6)
+    embed = discord.Embed(title=f"🎒 {interaction.user.display_name}님의 서버 전용 보관함", description=msg, color=0x95a5a6)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="물고기팔기", description="보관함에 있는 모든 물고기를 판매합니다.")
+@bot.tree.command(name="물고기팔기", description="이 서버 보관함에 있는 모든 물고기를 판매합니다.")
 async def 물고기팔기(interaction: discord.Interaction):
-    user_id = interaction.user.id
-    inventory = user_inventory.get(user_id, {})
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    
+    # 이 서버의 인벤토리 가져오기
+    inventory = get_user_data(user_inventory, g_id, u_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
-        return await interaction.response.send_message("❌ 팔 수 있는 물고기가 없습니다.", ephemeral=True)
+        return await interaction.response.send_message("❌ 이 서버에서 팔 수 있는 물고기가 없습니다.", ephemeral=True)
 
     total_profit = 0
     for fish_name, count in inventory.items():
         if count > 0:
+            # FISH_DATA에서 가격 정보 참조
             profit = FISH_DATA[fish_name]["price"] * count
             total_profit += profit
-            inventory[fish_name] = 0 # 판매 후 초기화
+            inventory[fish_name] = 0 # 해당 서버 인벤토리 초기화
 
-    # 돈 지급 (기존 변수 user_money 사용)
-    user_money[user_id] = user_money.get(user_id, 0) + total_profit
+    # 1. 판매 결과 인벤토리 저장 (비우기)
+    set_user_data(user_inventory, g_id, u_id, inventory)
     
-    await interaction.response.send_message(f"💰 물고기를 모두 팔아 **{total_profit:,}원**을 벌었습니다!\n현재 잔고: **{user_money[user_id]:,}원**")
+    # 2. 이 서버 잔고에 돈 지급 및 저장
+    current_money = get_user_data(user_money, g_id, u_id, 0)
+    new_money = current_money + total_profit
+    set_user_data(user_money, g_id, u_id, new_money)
+    
+    await interaction.response.send_message(
+        f"💰 물고기를 모두 팔아 **{total_profit:,}원**을 벌었습니다!\n"
+        f"💵 현재 **이 서버** 잔고: **{new_money:,}원**"
+    )
 
 
-# =====================
-# 도박: 배팅 (슬래시 커맨드 버전)
+# # =====================
+# 도박: 배팅 (서버별 독립 버전)
 # =====================
 @bot.tree.command(name="도박", description="배팅금을 걸고 도박을 합니다. (성공 확률 45%, 보상 2배)")
-async def 도박(interaction: discord.Interaction, bet: int): # ctx -> interaction, 배팅금 인자 추가
-    user_id = interaction.user.id
-    current_money = user_money.get(user_id, 0)
+async def 도박(interaction: discord.Interaction, bet: int):
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    
+    # 이 서버의 현재 잔고 가져오기
+    current_money = get_user_data(user_money, g_id, u_id, 0)
 
-    # 1. 예외 처리 (기존 로직 유지)
+    # 1. 예외 처리
     if bet <= 0:
         return await interaction.response.send_message("❌ 1원 이상 배팅해야 합니다.", ephemeral=True)
     
     if current_money < bet:
-        return await interaction.response.send_message(f"❌ 잔액이 부족합니다. (현재: {current_money:,}원)", ephemeral=True)
+        return await interaction.response.send_message(
+            f"❌ **이 서버의 잔액**이 부족합니다. (현재 잔고: {current_money:,}원)", 
+            ephemeral=True
+        )
 
-    # 2. 45% 확률로 성공 로직 (기존과 동일)
+    # 2. 45% 확률로 성공 로직
     result = random.randint(1, 100)
     
     if result <= 45:
-        win_money = bet * 2
-        user_money[user_id] += (win_money - bet) # 배팅금 제외 순수익 더하기
-        # 3. 결과 전송 (interaction.response.send_message)
+        # 성공: 배팅금의 2배를 얻음 (기존 잔고 + 배팅금액 만큼 추가)
+        new_money = current_money + bet
+        set_user_data(user_money, g_id, u_id, new_money)
+        
         await interaction.response.send_message(
-            f"🍀 **대성공!** 🍀\n{interaction.user.mention}님, 45%의 확률을 뚫고 **{win_money:,}원**을 획득하셨습니다! \n"
-            f"💰 현재 잔고: {user_money[user_id]:,}원"
+            f"🍀 **대성공!** 🍀\n{interaction.user.mention}님, 45%의 확률을 뚫고 **{bet*2:,}원**을 획득하셨습니다! \n"
+            f"💰 현재 **이 서버** 잔고: {new_money:,}원"
         )
     else:
-        user_money[user_id] -= bet
-        # 3. 결과 전송
+        # 실패: 배팅금 차감
+        new_money = current_money - bet
+        set_user_data(user_money, g_id, u_id, new_money)
+        
         await interaction.response.send_message(
             f"💸 **탕진잼...** 💸\n{interaction.user.mention}님, 배팅한 **{bet:,}원**이 공중분해 되었습니다. \n"
-            f"💰 현재 잔고: {user_money[user_id]:,}원"
+            f"💰 현재 **이 서버** 잔고: {new_money:,}원"
         )
 
 # =====================
@@ -605,17 +668,16 @@ async def on_ready():
 # =====================
 # 명령어: 퍼니퀴즈 (중단 기능 포함)
 # =====================
-@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (20초 / 10초 후 힌트)")
+@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다!")
 async def 가사빈칸(interaction: discord.Interaction):
-    guild_id = interaction.guild_id
+    g_id = interaction.guild_id
     
-    # 이미 게임이 진행 중인지 확인
-    if active_games.get(guild_id):
-        await interaction.response.send_message("❌ 이미 게임이 진행 중입니다!", ephemeral=True)
-        return
+    # 이미 해당 서버에서 게임이 진행 중인지 확인
+    if active_games.get(g_id):
+        return await interaction.response.send_message("❌ 이 서버에서 이미 게임이 진행 중입니다!", ephemeral=True)
 
-    # 게임 시작 상태 설정
-    active_games[guild_id] = True
+    # 게임 시작 상태 설정 (서버별 독립)
+    active_games[g_id] = True
     # 1. 문제 데이터 (제목 요소 완벽 제거 및 순수 가사 구성)
     lyrics_pool = [
         {"quiz": "동해 물과 [ ?? ]산이 마르고 닳도록", "answer": "백두"},
@@ -884,11 +946,11 @@ async def 가사빈칸(interaction: discord.Interaction):
     await asyncio.sleep(2)
 
     current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
-    scoreboard = {}
+    scoreboard = {} # {user_id: score}
 
     for i, selected in enumerate(current_game_pool, 1):
-        # 🛑 중단 체크
-        if not active_games.get(guild_id):
+        # 🛑 중단 체크 (서버별 상태 확인)
+        if not active_games.get(g_id):
             await interaction.channel.send("🛑 **게임이 강제 중단되었습니다.**")
             return
 
@@ -912,7 +974,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         try:
             msg = await bot.wait_for('message', check=check, timeout=10.0)
         except asyncio.TimeoutError:
-            if not active_games.get(guild_id): return # 중단 체크
+            if not active_games.get(g_id): return # 중단 체크
             
             hint_embed = discord.Embed(
                 title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 힌트 등장!",
@@ -934,12 +996,13 @@ async def 가사빈칸(interaction: discord.Interaction):
         if i < 10:
             await asyncio.sleep(2)
 
-    active_games[guild_id] = False # 게임 종료 상태로 변경
+    active_games[g_id] = False # 게임 종료 상태로 변경
 
     if not scoreboard:
         await interaction.channel.send("🏁 **게임 종료!** 우승자가 없습니다.")
         return
 
+    # 우승자 계산
     max_score = max(scoreboard.values())
     final_winners = [u_id for u_id, score in scoreboard.items() if score == max_score]
     
@@ -949,26 +1012,30 @@ async def 가사빈칸(interaction: discord.Interaction):
         result_text += f"- {user.display_name}: {score}점\n"
     await interaction.channel.send(result_text)
 
+    # 💰 상금 지급 (서버별 독립 저장)
     reward = 30000
     winner_mentions = []
     for w_id in final_winners:
-        user_money[w_id] = user_money.get(w_id, 0) + reward
+        # 이 서버의 지갑에서 돈을 가져와서 더해줌
+        current_money = get_user_data(user_money, g_id, w_id, 0)
+        set_user_data(user_money, g_id, w_id, current_money + reward)
+        
         winner_obj = await bot.fetch_user(w_id)
         winner_mentions.append(winner_obj.mention)
 
-    await interaction.channel.send(f"🎊 우승자 {', '.join(winner_mentions)}님께 상금 **{reward:,}원**을 지급했습니다!")
+    await interaction.channel.send(f"🎊 우승자 {', '.join(winner_mentions)}님께 **이 서버 상금** **{reward:,}원**을 지급했습니다!")
 
 # =====================
-# 명령어: 야그만해
+# 명령어: 야그만해 (서버별 독립 버전)
 # =====================
-@bot.tree.command(name="야그만해", description="진행 중인 퀴즈 게임을 즉시 중단합니다.")
+@bot.tree.command(name="야그만해", description="이 서버에서 진행 중인 퀴즈를 중단합니다.")
 async def 중단(interaction: discord.Interaction):
-    guild_id = interaction.guild_id
-    if active_games.get(guild_id):
-        active_games[guild_id] = False
-        await interaction.response.send_message("🛑 게임 중단 요청을 완료했습니다.")
+    g_id = interaction.guild_id
+    if active_games.get(g_id):
+        active_games[g_id] = False
+        await interaction.response.send_message("🛑 이 서버의 게임 중단 요청을 완료했습니다.")
     else:
-        await interaction.response.send_message("❓ 현재 진행 중인 게임이 없습니다.", ephemeral=True)
+        await interaction.response.send_message("❓ 현재 이 서버에서 진행 중인 게임이 없습니다.", ephemeral=True)
 
 # =====================
 # 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
@@ -1159,26 +1226,34 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🤖 봇 명령어 가이드",
-        description="이 봇에서 사용할 수 있는 전체 슬래시 명령어 목록입니다.",
+        description="이 봇의 데이터(돈, 낚시 등)는 **각 서버별로 독립적으로 관리**됩니다.",
         color=0x3498db
     )
 
     # 일상 & 운세
     embed.add_field(
         name="🔮 일상 & 운세",
-       value="""`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.
-`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.""",
+        value="`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
+              "`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.",
         inline=False
     )
 
     # 경제 시스템
     embed.add_field(
         name="💰 경제 & 낚시",
-        value="`/돈내놔`: 하루 3회, 10,000원을 지원받습니다.\n"
-              "`/잔고`: 현재 내 지갑에 있는 돈을 확인합니다.\n"
-              "`/낚시`: 물고기(또는 장화)를 잡습니다.\n"
-              "`/보관함`: 내가 잡은 물고기 목록을 봅니다.\n"
-              "`/물고기팔기`: 잡은 물고기를 모두 팔아 돈을 법니다.",
+        value="`/돈내놔`: 하루 3회, 이 서버 전용 지원금을 받습니다.\n"
+              "`/잔고`: 이 서버의 지갑에 있는 돈을 확인합니다.\n"
+              "`/낚시`: 물고기를 잡아 보관함에 저장합니다.\n"
+              "`/보관함`: 이 서버에서 잡은 내 물고기 목록을 봅니다.\n"
+              "`/물고기팔기`: 잡은 물고기를 팔아 서버 잔고를 채웁니다.",
+        inline=False
+    )
+
+    # 미니게임 (새로 추가)
+    embed.add_field(
+        name="🎮 미니게임",
+        value="`/퍼니퀴즈`: 가사 빈칸 맞히기! (우승 시 30,000원)\n"
+              "`/야그만해`: 진행 중인 퀴즈를 즉시 중단합니다.",
         inline=False
     )
 
@@ -1187,7 +1262,7 @@ async def help_command(interaction: discord.Interaction):
         name="🎰 도박",
         value="`/홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
               "`/도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
-              "`/로또`: 1,000원으로 인생 역전! (하루 15회)",
+              "`/로또`: 1,000원으로 인생 역전! (서버당 하루 15회)",
         inline=False
     )
 
@@ -1202,18 +1277,16 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="🎶 음악 재생",
         value="`/야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
-              "`/야재생해 [검색어/URL]`: 노래를 검색하거나 링크로 즉시 재생합니다.\n"
+              "`/야재생해 [검색어/URL]`: 노래를 즉시 재생합니다.\n"
               "`/야기다려 [검색어]`: 노래를 대기열에 추가합니다.\n"
-              "`/야목록`: 현재 대기열에 담긴 노래들을 확인합니다.\n"
-              "`/야멈춰`: 재생 중인 노래를 중지합니다.\n"
-              "`/야넘겨`: 다음 노래로 넘깁니다.\n"
-              "`/야꺼져`: 봇을 음성 채널에서 내보냅니다.",
+              "`/야목록`: 현재 대기열 목록을 확인합니다.\n"
+              "`/야멈춰`: 중지 / `/야넘겨`: 다음 곡 / `/야꺼져`: 퇴장",
         inline=False
     )
 
-    # 푸터 설정 (interaction.user 사용)
+    # 푸터 설정
     embed.set_footer(
-        text=f"요청자: {interaction.user.display_name}", 
+        text=f"요청자: {interaction.user.display_name} | 데이터는 서버별로 저장됩니다.", 
         icon_url=interaction.user.display_avatar.url
     )
     
