@@ -6,7 +6,6 @@ import datetime
 import asyncio
 import os
 from collections import deque  # 대기열을 위한 deque
-import openai
 from io import BytesIO # 이미지를 바이트로 변환하기 위해 필요
 
 # =====================
