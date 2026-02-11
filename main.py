@@ -589,10 +589,10 @@ async def on_ready():
         print(f"동기화 중 오류 발생: {e}")
 
 # =====================
-# 명령어: 가사빈칸게임 (10문제 연속 모드)
+# 명령어: 가사빈칸게임 (최종 보상형)
 # =====================
 
-@bot.tree.command(name="가사빈칸게임", description="노래 가사의 빈칸을 맞혀보세요! (10문제 연속, 문제당 30초)")
+@bot.tree.command(name="가사빈칸게임", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (문제당 15초)")
 async def 가사빈칸(interaction: discord.Interaction):
     # 1. 문제 데이터
     lyrics_pool = [
@@ -730,67 +730,78 @@ async def 가사빈칸(interaction: discord.Interaction):
     ]
 
     # 게임 시작 알림
-    await interaction.response.send_message("🎮 **가사 빈칸 게임을 시작합니다!** 잠시 후 첫 번째 문제가 출제됩니다. (총 10문제)")
+    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!**\n10문제를 가장 많이 맞힌 분께 **30,000원**을 드립니다! (문제당 15초)")
     await asyncio.sleep(2)
 
-    # 이번 게임에서 사용할 10문제 랜덤 추출
+    # 10문제 랜덤 추출
     current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
+    
+    # 점수 저장용 사전 (사용자ID: 맞힌 개수)
+    scoreboard = {}
 
     for i, selected in enumerate(current_game_pool, 1):
         quiz_text = selected["quiz"]
-        answer_text = selected["answer"].replace(" ", "") # 정답 비교용 (공백제거)
+        answer_text = selected["answer"].replace(" ", "") # 공백 제거 정답
 
         embed = discord.Embed(
             title=f"🎵 가사 빈칸 게임 ({i}/10 라운드)",
-            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 30초\n🥇 1등: 30,000원 | 🥈 2등: 15,000원",
+            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 15초",
             color=0x00ffcc
         )
-        # 라운드 시작 메시지
-        quiz_msg = await interaction.channel.send(embed=embed)
+        await interaction.channel.send(embed=embed)
 
-        winners = []
+        round_winner = None
 
         def check(m):
             return m.channel == interaction.channel and \
                    m.content.replace(" ", "") == answer_text and \
                    not m.author.bot
 
-        start_time = asyncio.get_event_loop().time()
-        
-        while len(winners) < 2:
-            try:
-                remaining = 30.0 - (asyncio.get_event_loop().time() - start_time)
-                if remaining <= 0:
-                    break
-                    
-                msg = await bot.wait_for('message', check=check, timeout=remaining)
-                
-                if msg.author.id not in winners:
-                    winners.append(msg.author.id)
-                    if len(winners) == 1:
-                        reward = 30000
-                        user_money[msg.author.id] = user_money.get(msg.author.id, 0) + reward
-                        await interaction.channel.send(f"🥇 **{msg.author.mention}님 1등!** (+30,000원)")
-                    elif len(winners) == 2:
-                        reward = 15000
-                        user_money[msg.author.id] = user_money.get(msg.author.id, 0) + reward
-                        await interaction.channel.send(f"🥈 **{msg.author.mention}님 2등!** (+15,000원)")
+        try:
+            # 정답자가 나올 때까지 최대 15초 대기
+            msg = await bot.wait_for('message', check=check, timeout=15.0)
+            round_winner = msg.author
             
-            except asyncio.TimeoutError:
-                break
-
-        # 라운드 결과 발표
-        if not winners:
+            # 점수 추가
+            scoreboard[round_winner.id] = scoreboard.get(round_winner.id, 0) + 1
+            await interaction.channel.send(f"✅ **{round_winner.mention}님 정답!** (현재 {scoreboard[round_winner.id]}점)")
+            
+        except asyncio.TimeoutError:
             await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{selected['answer']}]**였습니다.")
-        else:
-            await interaction.channel.send(f"✅ 라운드 종료! 정답은 **[{selected['answer']}]**였습니다.")
 
-        # 마지막 문제가 아니면 잠시 휴식
+        # 라운드 사이 짧은 대기 (2초 후 바로 다음 문제)
         if i < 10:
-            await interaction.channel.send(f"--- 5초 후 다음 문제가 나옵니다! ---")
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
-    await interaction.channel.send("🏁 **모든 라운드가 종료되었습니다!** 참여해주신 모든 분들 감사합니다.")
+    # =====================
+    # 최종 결과 발표
+    # =====================
+    if not scoreboard:
+        await interaction.channel.send("🏁 **게임 종료!** 정답자가 없어 우승자가 없습니다.")
+        return
+
+    # 가장 많이 맞힌 점수 확인
+    max_score = max(scoreboard.values())
+    # 공동 우승자 포함 리스트업
+    final_winners = [user_id for user_id, score in scoreboard.items() if score == max_score]
+    
+    result_text = "🏆 **최종 게임 결과** 🏆\n"
+    for user_id, score in scoreboard.items():
+        user = await bot.fetch_user(user_id)
+        result_text += f"- {user.display_name}: {score}점\n"
+
+    await interaction.channel.send(result_text)
+
+    # 보상 지급 (공동 우승일 경우 인원수로 나누거나 각자 지급 설정 가능)
+    reward = 30000
+    winner_mentions = []
+    
+    for w_id in final_winners:
+        user_money[w_id] = user_money.get(w_id, 0) + reward
+        winner_obj = await bot.fetch_user(w_id)
+        winner_mentions.append(winner_obj.mention)
+
+    await interaction.channel.send(f"🎊 우승자 {', '.join(winner_mentions)}님께 상금 **{reward:,}원**을 지급했습니다!")
 
 # =====================
 # 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
