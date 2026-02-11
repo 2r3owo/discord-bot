@@ -74,13 +74,21 @@ def now_kst():
 @bot.event
 async def on_ready():
     print(f"✅ 봇 로그인 완료: {bot.user}")
+    
+    # --- 이 부분을 추가하세요 ---
+    try:
+        synced = await bot.tree.sync()
+        print(f"🔄 {len(synced)}개의 명령어 동기화 완료! (삭제된 것 반영됨)")
+    except Exception as e:
+        print(f"❌ 동기화 중 오류 발생: {e}")
+    # --------------------------
+
     if not morning.is_running():
         morning.start()
     if not lunch.is_running():
         lunch.start()
     if not dinner.is_running():
         dinner.start()
-
 # =====================
 # 자동 인사 스케줄러
 # =====================
