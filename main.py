@@ -668,15 +668,13 @@ async def on_ready():
 # =====================
 # 명령어: 퍼니퀴즈 (중단 기능 포함)
 # =====================
-@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다!")
+@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (30초, 단계별 힌트)")
 async def 가사빈칸(interaction: discord.Interaction):
     g_id = interaction.guild_id
     
-    # 이미 해당 서버에서 게임이 진행 중인지 확인
     if active_games.get(g_id):
         return await interaction.response.send_message("❌ 이 서버에서 이미 게임이 진행 중입니다!", ephemeral=True)
 
-    # 게임 시작 상태 설정 (서버별 독립)
     active_games[g_id] = True
     # 1. 문제 데이터 (제목 요소 완벽 제거 및 순수 가사 구성)
     lyrics_pool = [
@@ -942,14 +940,13 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "우리의 [ ?? ]은 여기까지인가 봐", "answer": "인연"}
     ]
 
-    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!** (중단: `/야그만해`)\n10문제를 가장 많이 맞힌 분께 **30,000원**을 드립니다!")
+    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!** (중단: `/야그만해`)\n10초마다 힌트가 제공됩니다. 우승 상금: **30,000원**!")
     await asyncio.sleep(2)
 
     current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
-    scoreboard = {} # {user_id: score}
+    scoreboard = {}
 
     for i, selected in enumerate(current_game_pool, 1):
-        # 🛑 중단 체크 (서버별 상태 확인)
         if not active_games.get(g_id):
             await interaction.channel.send("🛑 **게임이 강제 중단되었습니다.**")
             return
@@ -957,11 +954,14 @@ async def 가사빈칸(interaction: discord.Interaction):
         quiz_text = selected["quiz"]
         answer_raw = selected["answer"]
         answer_text = answer_raw.replace(" ", "")
+        
+        # 힌트 생성
         chosung_hint = get_chosung(answer_raw)
+        first_char_hint = answer_raw[0] + "○" * (len(answer_raw) - 1)
 
         embed = discord.Embed(
             title=f"🎵 가사 빈칸 게임 ({i}/10 라운드)",
-            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 20초",
+            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 30초",
             color=0x00ffcc
         )
         quiz_msg = await interaction.channel.send(embed=embed)
@@ -971,38 +971,55 @@ async def 가사빈칸(interaction: discord.Interaction):
                    m.content.replace(" ", "") == answer_text and \
                    not m.author.bot
 
+        final_answer_msg = None
+
         try:
-            msg = await bot.wait_for('message', check=check, timeout=10.0)
-        except asyncio.TimeoutError:
-            if not active_games.get(g_id): return # 중단 체크
+            # --- [1단계] 첫 10초 대기 (힌트 없음) ---
+            final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
             
-            hint_embed = discord.Embed(
-                title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 힌트 등장!",
-                description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n\n⏱️ **남은 시간:** 10초",
+        except asyncio.TimeoutError:
+            if not active_games.get(g_id): return
+            
+            # --- [2단계] 10초 경과: 초성 힌트 공개 ---
+            hint1_embed = discord.Embed(
+                title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 1차 힌트",
+                description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n\n⏱️ **남은 시간:** 20초",
                 color=0xffff00
             )
-            await quiz_msg.edit(embed=hint_embed)
+            await quiz_msg.edit(embed=hint1_embed)
             
             try:
-                msg = await bot.wait_for('message', check=check, timeout=10.0)
+                final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
             except asyncio.TimeoutError:
-                await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_raw}]**였습니다.")
-                msg = None
+                if not active_games.get(g_id): return
+                
+                # --- [3단계] 20초 경과: 한 글자 오픈 힌트 공개 ---
+                hint2_embed = discord.Embed(
+                    title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 2차 힌트",
+                    description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n🎁 **결정적 힌트:** `{first_char_hint}`\n\n⏱️ **마지막 10초!**",
+                    color=0xffa500
+                )
+                await quiz_msg.edit(embed=hint2_embed)
+                
+                try:
+                    final_answer_msg = await bot.wait_for('message', check=check, timeout=10.0)
+                except asyncio.TimeoutError:
+                    await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_raw}]**였습니다.")
 
-        if msg:
-            scoreboard[msg.author.id] = scoreboard.get(msg.author.id, 0) + 1
-            await interaction.channel.send(f"✅ **{msg.author.mention}님 정답!** (현재 {scoreboard[msg.author.id]}점)")
+        # 정답자가 있을 경우 점수 기록
+        if final_answer_msg:
+            scoreboard[final_answer_msg.author.id] = scoreboard.get(final_answer_msg.author.id, 0) + 1
+            await interaction.channel.send(f"✅ **{final_answer_msg.author.mention}님 정답!** (현재 {scoreboard[final_answer_msg.author.id]}점)")
 
-        if i < 10:
+        if i < 10 and active_games.get(g_id):
             await asyncio.sleep(2)
 
-    active_games[g_id] = False # 게임 종료 상태로 변경
-
+    # --- 이하 결과 발표 및 상금 지급 로직은 기존과 동일 ---
+    active_games[g_id] = False
     if not scoreboard:
         await interaction.channel.send("🏁 **게임 종료!** 우승자가 없습니다.")
         return
 
-    # 우승자 계산
     max_score = max(scoreboard.values())
     final_winners = [u_id for u_id, score in scoreboard.items() if score == max_score]
     
@@ -1012,18 +1029,15 @@ async def 가사빈칸(interaction: discord.Interaction):
         result_text += f"- {user.display_name}: {score}점\n"
     await interaction.channel.send(result_text)
 
-    # 💰 상금 지급 (서버별 독립 저장)
     reward = 30000
     winner_mentions = []
     for w_id in final_winners:
-        # 이 서버의 지갑에서 돈을 가져와서 더해줌
         current_money = get_user_data(user_money, g_id, w_id, 0)
         set_user_data(user_money, g_id, w_id, current_money + reward)
-        
         winner_obj = await bot.fetch_user(w_id)
         winner_mentions.append(winner_obj.mention)
 
-    await interaction.channel.send(f"🎊 우승자 {', '.join(winner_mentions)}님께 **이 서버 상금** **{reward:,}원**을 지급했습니다!")
+    await interaction.channel.send(f"🎊 우승자 {', '.join(winner_mentions)}님께 **상금** **{reward:,}원**을 지급했습니다!")
 
 # =====================
 # 명령어: 야그만해 (서버별 독립 버전)
