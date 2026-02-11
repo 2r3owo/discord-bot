@@ -33,18 +33,17 @@ queues = {}
 # YDL 및 FFMPEG 옵션
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn',
+    'options': '-vn', # 비디오는 빼고 오디오만!
 }
 
 YDL_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
-    # --- 아래 한 줄을 추가하세요 ---
-    'cookiefile': 'cookies.txt', 
+    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
 }
 
 # =====================
