@@ -589,9 +589,10 @@ async def on_ready():
         print(f"동기화 중 오류 발생: {e}")
 
 # =====================
-# 명령어: 가사빈칸게임
+# 명령어: 가사빈칸게임 (10문제 연속 모드)
 # =====================
-@bot.tree.command(name="가사빈칸게임", description="노래 가사의 빈칸을 맞혀보세요! (1등 3만, 2등 1.5만)")
+
+@bot.tree.command(name="가사빈칸게임", description="노래 가사의 빈칸을 맞혀보세요! (10문제 연속, 문제당 30초)")
 async def 가사빈칸(interaction: discord.Interaction):
     # 1. 문제 데이터
     lyrics_pool = [
@@ -728,50 +729,86 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "마지막 인사를 나누며 [ ?? ]를 보냈어", "answer": "미소"}
     ]
 
-    selected = random.choice(lyrics_pool)
-    quiz_text = selected["quiz"]
-    answer_text = selected["answer"]
+    # 게임 시작 알림
+    await interaction.response.send_message("🎮 **가사 빈칸 게임을 시작합니다!** 잠시 후 첫 번째 문제가 출제됩니다. (총 10문제)")
+    await asyncio.sleep(2)
 
-    embed = discord.Embed(
-        title="🎵 가사 빈칸 맞히기 게임",
-        description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 30초\n🥇 1등: 30,000원 | 🥈 2등: 15,000원",
-        color=0x00ffcc
-    )
-    await interaction.response.send_message(embed=embed)
+    # 이번 게임에서 사용할 10문제 랜덤 추출
+    current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
 
-    winners = []
+    for i, selected in enumerate(current_game_pool, 1):
+        quiz_text = selected["quiz"]
+        answer_text = selected["answer"].replace(" ", "") # 정답 비교용 (공백제거)
 
-    def check(m):
-        return m.channel == interaction.channel and m.content.replace(" ", "") == answer_text and not m.author.bot
+        embed = discord.Embed(
+            title=f"🎵 가사 빈칸 게임 ({i}/10 라운드)",
+            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 30초\n🥇 1등: 30,000원 | 🥈 2등: 15,000원",
+            color=0x00ffcc
+        )
+        # 라운드 시작 메시지
+        quiz_msg = await interaction.channel.send(embed=embed)
 
-    start_time = asyncio.get_event_loop().time()
-    
-    while len(winners) < 2:
-        try:
-            timeout = 30.0 - (asyncio.get_event_loop().time() - start_time)
-            if timeout <= 0:
-                break
+        winners = []
+
+        def check(m):
+            return m.channel == interaction.channel and \
+                   m.content.replace(" ", "") == answer_text and \
+                   not m.author.bot
+
+        start_time = asyncio.get_event_loop().time()
+        
+        while len(winners) < 2:
+            try:
+                remaining = 30.0 - (asyncio.get_event_loop().time() - start_time)
+                if remaining <= 0:
+                    break
+                    
+                msg = await bot.wait_for('message', check=check, timeout=remaining)
                 
-            msg = await bot.wait_for('message', check=check, timeout=timeout)
+                if msg.author.id not in winners:
+                    winners.append(msg.author.id)
+                    if len(winners) == 1:
+                        reward = 30000
+                        user_money[msg.author.id] = user_money.get(msg.author.id, 0) + reward
+                        await interaction.channel.send(f"🥇 **{msg.author.mention}님 1등!** (+30,000원)")
+                    elif len(winners) == 2:
+                        reward = 15000
+                        user_money[msg.author.id] = user_money.get(msg.author.id, 0) + reward
+                        await interaction.channel.send(f"🥈 **{msg.author.mention}님 2등!** (+15,000원)")
             
-            if msg.author.id not in winners:
-                winners.append(msg.author.id)
-                if len(winners) == 1:
-                    await interaction.channel.send(f"🥇 **1등 당첨!** {msg.author.mention}님 정답! (상금 30,000원)")
-                elif len(winners) == 2:
-                    await interaction.channel.send(f"🥈 **2등 당첨!** {msg.author.mention}님 정답! (상금 15,000원)")
-        
-        except asyncio.TimeoutError:
-            break
+            except asyncio.TimeoutError:
+                break
 
-    if not winners:
-        await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_text}]**였습니다.")
-    else:
-        for i, user_id in enumerate(winners):
-            reward = 30000 if i == 0 else 15000
-            user_money[user_id] = user_money.get(user_id, 0) + reward
-        
-        await interaction.channel.send(f"🎊 게임 종료! (정답: {answer_text})")
+        # 라운드 결과 발표
+        if not winners:
+            await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{selected['answer']}]**였습니다.")
+        else:
+            await interaction.channel.send(f"✅ 라운드 종료! 정답은 **[{selected['answer']}]**였습니다.")
+
+        # 마지막 문제가 아니면 잠시 휴식
+        if i < 10:
+            await interaction.channel.send(f"--- 5초 후 다음 문제가 나옵니다! ---")
+            await asyncio.sleep(5)
+
+    await interaction.channel.send("🏁 **모든 라운드가 종료되었습니다!** 참여해주신 모든 분들 감사합니다.")
+
+# =====================
+# 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
+# =====================
+@bot.event
+async def on_ready():
+    # 슬래시 커맨드 동기화
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ {bot.user.name} 연결 완료! {len(synced)}개 명령어 동기화됨")
+    except Exception as e:
+        print(f"❌ 동기화 중 오류: {e}")
+
+    # 인사 스케줄러 실행 (기존에 정의하신 morning, lunch 등)
+    if not morning.is_running(): morning.start()
+    if not lunch.is_running(): lunch.start()
+    if not dinner.is_running(): dinner.start()
+    if not test_greeting.is_running(): test_greeting.start()
 
 # =====================
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
