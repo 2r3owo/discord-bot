@@ -531,95 +531,124 @@ async def 로또(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 # ===================== 
-# 경제 시스템: 낚시 시스템 (서버별 독립 버전)
+# 경제 시스템: 낚시 시스템 (수정 버전)
 # ===================== 
+
+# 1. 낚시 데이터 정의
+FISH_DATA = {
+    "낡은 장화": {"chance": 15, "price": 0, "is_trash": True},
+    "찌그러진 캔": {"chance": 15, "price": 0, "is_trash": True},
+    "피라미": {"chance": 12, "price": 100},
+    "붕어": {"chance": 10, "price": 500},
+    "새우": {"chance": 8, "price": 800},
+    "불가사리": {"chance": 7, "price": 1200},
+    "잉어": {"chance": 6, "price": 2000},
+    "오징어": {"chance": 5, "price": 3000},
+    "복어": {"chance": 4, "price": 4500},
+    "해파리": {"chance": 4, "price": 4000},
+    "문어": {"chance": 3, "price": 7000},
+    "거북이": {"chance": 2, "price": 15000},
+    "해마": {"chance": 1, "price": 30000},
+    "물범": {"chance": 0.5, "price": 50000},
+    "상어": {"chance": 0.3, "price": 100000},
+    "고래": {"chance": 0.2, "price": 300000}
+}
 
 @bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
 async def 낚시(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
-    
-    # 1. 첫 응답 전송 (사용자에게 봇이 작업 중임을 즉시 알림)
     await interaction.response.send_message(f"🎣 {interaction.user.display_name}님이 낚싯대를 던졌습니다... (기다리는 중)")
     
     try:
-        # 2. 데이터 가져오기 및 대기
         inventory = get_user_data(user_inventory, g_id, u_id, {})
-        
-        # 낚시하는 맛을 위해 2초 대기
         await asyncio.sleep(2) 
 
-        # 3. 확률 기반 낚시 로직
-        # FISH_DATA가 코드 상단에 딕셔너리 형태로 잘 정의되어 있어야 합니다.
         fish_names = list(FISH_DATA.keys())
         fish_weights = [f["chance"] for f in FISH_DATA.values()]
-        
-        # 물고기 한 마리 추첨
-        caught_fish = random.choices(fish_names, weights=fish_weights, k=1)[0]
+        caught_item = random.choices(fish_names, weights=fish_weights, k=1)[0]
+        fish_info = FISH_DATA[caught_item]
 
-        # 4. 이 서버 인벤토리에 추가 및 저장
-        inventory[caught_fish] = inventory.get(caught_fish, 0) + 1
+        if fish_info.get("is_trash"):
+            embed = discord.Embed(title="⚙️ 낚시 실패...", description=f"에고... **{caught_item}**을 낚았습니다.", color=0x95a5a6)
+            return await interaction.edit_original_response(content=None, embed=embed)
+
+        inventory[caught_item] = inventory.get(caught_item, 0) + 1
         set_user_data(user_inventory, g_id, u_id, inventory)
         
-        # 5. 결과 알림 (followup 대신 기존 메시지를 수정하여 멈춤 현상 방지)
-        embed = discord.Embed(
-            title="🎣 낚시 성공!", 
-            description=f"와우! **{interaction.user.display_name}**님,\n**{caught_fish}**를 잡았습니다!", 
-            color=0x3498db
-        )
-        embed.set_footer(text=f"현재 이 서버 보관함에 {caught_fish} {inventory[caught_fish]}마리 보유 중")
-        
-        # [중요] 처음 보냈던 "기다리는 중" 메시지를 결과 임베드로 바로 교체합니다.
+        embed = discord.Embed(title="✨ 낚시 성공!", description=f"**{interaction.user.display_name}**님, **{caught_item}**를 잡았습니다!", color=0x3498db)
+        embed.set_footer(text=f"현재 보관함에 {caught_item} {inventory[caught_item]}마리 보유 중")
         await interaction.edit_original_response(content=None, embed=embed)
-
     except Exception as e:
-        # 에러 발생 시 로그를 남기고 사용자에게 알림 (어디서 틀렸는지 파악 가능)
-        print(f"낚시 명령어 에러 발생: {e}")
-        await interaction.edit_original_response(content=f"❌ 낚시 중 오류가 발생했습니다. (관리자 확인 요망)")
+        await interaction.edit_original_response(content=f"❌ 오류 발생: {e}")
+
+@bot.tree.command(name="가격표", description="물고기들의 판매 가격을 확인합니다.")
+async def 가격표(interaction: discord.Interaction):
+    lines = [f"**{name}**: {info['price']:,}원" for name, info in FISH_DATA.items() if not info.get("is_trash")]
+    trash = [f"**{name}**: 0원" for name, info in FISH_DATA.items() if info.get("is_trash")]
+    
+    embed = discord.Embed(title="🐟 물고기 시세표", color=0x5865F2)
+    embed.add_field(name="[물고기]", value="\n".join(lines), inline=True)
+    embed.add_field(name="[꽝/쓰레기]", value="\n".join(trash), inline=True)
+    await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="보관함", description="현재 서버에서 잡은 물고기 목록을 확인합니다.")
 async def 보관함(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
-    
     inventory = get_user_data(user_inventory, g_id, u_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
-        return await interaction.response.send_message("텅~ 이 서버 보관함이 비어있습니다. 낚시를 먼저 해보세요!", ephemeral=True)
+        return await interaction.response.send_message("텅~ 보관함이 비어있습니다.", ephemeral=True)
 
-    msg = "\n".join([f"{name}: {count}마리" for name, count in inventory.items() if count > 0])
-    embed = discord.Embed(title=f"🎒 {interaction.user.display_name}님의 서버 전용 보관함", description=msg, color=0x95a5a6)
+    msg = "\n".join([f"**{name}**: {count}마리" for name, count in inventory.items() if count > 0])
+    embed = discord.Embed(title=f"🎒 {interaction.user.display_name}님의 보관함", description=msg, color=0x95a5a6)
     await interaction.response.send_message(embed=embed)
 
-@bot.tree.command(name="물고기팔기", description="이 서버 보관함에 있는 모든 물고기를 판매합니다.")
-async def 물고기팔기(interaction: discord.Interaction):
+@bot.tree.command(name="팔기", description="물고기를 판매합니다. 이름을 입력하지 않으면 모두 판매합니다.")
+@discord.app_commands.describe(물고기이름="판매할 물고기 이름 (비우면 모두 판매)", 갯수="판매할 마리 수 (비우면 해당 물고기 모두 판매)")
+async def 팔기(interaction: discord.Interaction, 물고기이름: str = None, 갯수: int = None):
     g_id = interaction.guild.id
     u_id = interaction.user.id
-    
     inventory = get_user_data(user_inventory, g_id, u_id, {})
-    
+
     if not inventory or sum(inventory.values()) == 0:
-        return await interaction.response.send_message("❌ 이 서버에서 팔 수 있는 물고기가 없습니다.", ephemeral=True)
+        return await interaction.response.send_message("❌ 판매할 물고기가 없습니다.", ephemeral=True)
 
     total_profit = 0
-    for fish_name, count in inventory.items():
-        if count > 0:
-            # FISH_DATA에서 가격 정보 참조
-            profit = FISH_DATA[fish_name]["price"] * count
-            total_profit += profit
-            inventory[fish_name] = 0 
 
-    # 판매 결과 저장
+    # 1. 특정 물고기 부분 판매
+    if 물고기이름:
+        if 물고기이름 not in inventory or inventory[물고기이름] <= 0:
+            return await interaction.response.send_message(f"❌ 보관함에 **{물고기이름}**이 없습니다.", ephemeral=True)
+        
+        current_count = inventory[물고기이름]
+        sell_count = 갯수 if 갯수 is not None else current_count
+        
+        if sell_count <= 0:
+            return await interaction.response.send_message("❌ 1마리 이상 판매해야 합니다.", ephemeral=True)
+        if sell_count > current_count:
+            return await interaction.response.send_message(f"❌ 부족합니다. (현재 {current_count}마리 보유)", ephemeral=True)
+        
+        profit = FISH_DATA[물고기이름]["price"] * sell_count
+        inventory[물고기이름] -= sell_count
+        total_profit = profit
+        result_msg = f"✅ **{물고기이름} {sell_count}마리**를 팔아 **{total_profit:,}원**을 벌었습니다!"
+
+    # 2. 전체 판매
+    else:
+        for f_name, count in inventory.items():
+            if count > 0 and f_name in FISH_DATA:
+                total_profit += FISH_DATA[f_name]["price"] * count
+                inventory[f_name] = 0
+        result_msg = f"💰 모든 물고기를 팔아 **{total_profit:,}원**을 벌었습니다!"
+
+    # 데이터 업데이트
     set_user_data(user_inventory, g_id, u_id, inventory)
-    
     current_money = get_user_data(user_money, g_id, u_id, 0)
-    new_money = current_money + total_profit
-    set_user_data(user_money, g_id, u_id, new_money)
+    set_user_data(user_money, g_id, u_id, current_money + total_profit)
     
-    await interaction.response.send_message(
-        f"💰 물고기를 모두 팔아 **{total_profit:,}원**을 벌었습니다!\n"
-        f"💵 현재 **이 서버** 잔고: **{new_money:,}원**"
-    )
+    await interaction.response.send_message(f"{result_msg}\n💵 현재 잔고: **{current_money + total_profit:,}원**")
 
 # # =====================
 # 도박: 배팅 (서버별 독립 버전)
@@ -1285,18 +1314,19 @@ async def help_command(interaction: discord.Interaction):
         inline=False
     )
 
-    # 경제 시스템
+    # 경제 시스템 (수정 및 추가됨)
     embed.add_field(
         name="💰 경제 & 낚시",
         value="`/돈내놔`: 하루 3회, 이 서버 전용 지원금을 받습니다.\n"
               "`/잔고`: 이 서버의 지갑에 있는 돈을 확인합니다.\n"
               "`/낚시`: 물고기를 잡아 보관함에 저장합니다.\n"
               "`/보관함`: 이 서버에서 잡은 내 물고기 목록을 봅니다.\n"
-              "`/물고기팔기`: 잡은 물고기를 팔아 서버 잔고를 채웁니다.",
+              "`/가격표`: 어떤 물고기가 비싼지 시세를 확인합니다. (신규)\n"
+              "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)",
         inline=False
     )
 
-    # 미니게임 (새로 추가)
+    # 미니게임
     embed.add_field(
         name="🎮 미니게임",
         value="`/퍼니퀴즈`: 가사 빈칸 맞히기! (우승 시 30,000원)\n"
