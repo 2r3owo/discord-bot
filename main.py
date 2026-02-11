@@ -635,15 +635,24 @@ async def 야목록(interaction: discord.Interaction):
 @bot.tree.command(name="야그려줘", description="AI가 그림을 그려줍니다. (무료 서버 사용)")
 async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
     # 봇이 응답을 준비 중임을 알림 (3초 타임아웃 방지)
+    await inte# =====================
+# 명령어: 야그려줘 (무료 버전 - 최적화 완료)
+# =====================
+@bot.tree.command(name="야그려줘", description="AI가 그림을 그려줍니다. (무료 서버 사용)")
+async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
+    # 봇이 응답을 준비 중임을 알림 (3초 타임아웃 방지)
     await interaction.response.defer(thinking=True)
     
     try:
-        # 한글 프롬프트 인코딩
+        # 1. 한글 프롬프트 인코딩
         encoded_prompt = urllib.parse.quote(prompt)
         
-        # 최적화된 주소 형식
+        # 2. 랜덤 시드 생성
         seed = random.randint(1, 1000000)
-        image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
+        
+        # 3. 최적화된 주소 형식 (확장자 .jpg 추가 및 모델 지정)
+        # pollinations.ai/p/프롬프트.jpg 형식을 사용하면 디스코드에서 이미지로 더 잘 인식합니다.
+        image_url = f"https://pollinations.ai/p/{encoded_prompt}.jpg?width=1024&height=1024&seed={seed}&nologo=true&model=flux"
         
         embed = discord.Embed(
             title="🎨 그림이 완성되었어요!",
@@ -652,12 +661,13 @@ async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
         )
         embed.set_image(url=image_url)
         
-        # defer를 썼으므로 전송은 followup으로!
+        # 4. 이미지 생성 시간이 걸릴 수 있으므로, 결과 전송
         await interaction.followup.send(embed=embed)
 
     except Exception as e:
         print(f"Error: {e}")
-        await interaction.followup.send("❌ 그림 생성 중 오류가 발생했습니다.")
+        # 에러 발생 시 사용자에게 알림
+        await interaction.followup.send(f"❌ 그림 생성 중 오류가 발생했습니다. 다시 시도해 주세요! (사유: {e})")
         
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
