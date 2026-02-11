@@ -2,10 +2,11 @@ import discord
 from discord.ext import commands, tasks
 import random
 import yt_dlp
-import datetime
 import asyncio
 import os
-from collections import deque  # 대기열을 위한 deque 
+from collections import deque  # 대기열을 위한 deque
+
+from datetime import datetime, timezone, timedelta
 
 # =====================
 # 설정 부분
@@ -71,51 +72,116 @@ def now_kst():
     return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 # =====================
-# 봇 준비 및 스케줄러 시작
+# KST 시간 함수
+# =====================
+def now_kst():
+    return datetime.now(timezone(timedelta(hours=9)))
+
+
+# =====================
+# 자동 인사 스케줄러
+# =====================
+last_sent = {
+    "morning": None,
+    "lunch": None,
+    "dinner": None,
+    "test_14": None,
+}
+
+
+async def send_to_all_guilds(message):
+    for guild in bot.guilds:
+
+        # 1️⃣ system_channel 우선
+        channel = guild.system_channel
+        if channel and channel.permissions_for(guild.me).send_messages:
+            await channel.send(message)
+            continue
+
+        # 2️⃣ 없으면 첫 번째 전송 가능한 채널
+        for ch in guild.text_channels:
+            if ch.permissions_for(guild.me).send_messages:
+                await ch.send(message)
+                break
+
+
+async def send_once(key, hour, minute, message):
+    now = now_kst()
+
+    # 정각 + 1분 허용
+    if now.hour == hour and 0 <= now.minute - minute < 2:
+        if last_sent.get(key) == now.date():
+            return
+
+        try:
+            await send_to_all_guilds(message)
+            last_sent[key] = now.date()
+            print(f"✅ {key} 인사 전송 완료")
+        except Exception as e:
+            print(f"❌ {key} 인사 전송 실패:", e)
+
+
+@tasks.loop(minutes=1)
+async def morning():
+    await send_once(
+        "morning",
+        6,
+        0,
+        "@everyone 기상! 기상! ٩(◕ᗜ◕)و 햇살이 똑똑똑~ 오늘 하루도 귀엽게 시작해 보자구요! ☀️"
+    )
+
+
+@tasks.loop(minutes=1)
+async def lunch():
+    await send_once(
+        "lunch",
+        12,
+        0,
+        "@everyone 🍚 점심시간! 맛있게 드세요!"
+    )
+
+
+@tasks.loop(minutes=1)
+async def dinner():
+    await send_once(
+        "dinner",
+        19,
+        0,
+        "@everyone 🛌 오늘도 고생했어요! 저녁 챙겨드세요!"
+    )
+
+
+# =====================
+# 🧪 테스트용 인사 (14:00)
+# =====================
+@tasks.loop(minutes=1)
+async def test_greeting():
+    await send_once(
+        "test_14",
+        14,
+        0,
+        "@everyone 🧪 하루의 반이 지났습니다. 모두들 졸지 말고, 정신차리세요!!! 파이팅!!!!🔥"
+    )
+
+
+# =====================
+# 봇 준비 완료 시 루프 시작
 # =====================
 @bot.event
 async def on_ready():
     print(f"✅ 봇 로그인 완료: {bot.user}")
-    
-    # --- 이 부분을 추가하세요 ---
-    try:
-        synced = await bot.tree.sync()
-        print(f"🔄 {len(synced)}개의 명령어 동기화 완료! (삭제된 것 반영됨)")
-    except Exception as e:
-        print(f"❌ 동기화 중 오류 발생: {e}")
-    # --------------------------
 
     if not morning.is_running():
         morning.start()
+
     if not lunch.is_running():
         lunch.start()
+
     if not dinner.is_running():
         dinner.start()
-# =====================
-# 자동 인사 스케줄러
-# =====================
-last_sent = {"morning": None, "lunch": None, "dinner": None}
 
-async def send_once(key, hour, minute, message):
-    now = now_kst()
-    if now.hour == hour and now.minute == minute:
-        if last_sent[key] != now.date():
-            channel = bot.get_channel(CHANNEL_ID)
-            if channel:
-                await channel.send(message)
-                last_sent[key] = now.date()
-
-@tasks.loop(minutes=1)
-async def morning():
-    await send_once("morning", 6, 0, "@everyone 기상! 기상! ٩(◕ᗜ◕)و 햇살이 똑똑똑~ 오늘 하루도 귀엽게 시작해 보자구요! 파이팅!! 아, 아침밥 드세요!☀️")
-
-@tasks.loop(minutes=1)
-async def lunch():
-    await send_once("lunch", 12, 0, "@everyone 꼬르륵.. 배꼽시계가 울려요! 맛있는 거 먹고 배 뚠뚠하게 채우기! 🍚✨")
-
-@tasks.loop(minutes=1)
-async def dinner():
-    await send_once("dinner", 19, 0, "@everyone 오늘 하루도 갓생 사느라 고생해따! 이제 침대랑 한 몸이 되어서 뒹굴뒹굴할 시간! 그 전에~ 맛있는 저녁은 꼬옥! 드세요! 🛌")
+    if not test_greeting.is_running():
+        test_greeting.start()
 
 # =====================
 # 명령어: 오늘의운세 (슬래시 커맨드 버전)
