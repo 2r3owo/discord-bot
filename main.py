@@ -8,6 +8,7 @@ import os
 from collections import deque  # 대기열을 위한 deque
 import urllib.parse  # 코드 맨 위에 추가
 from io import BytesIO # 이미지를 바이트로 변환하기 위해 필요
+import random
 
 # =====================
 # 설정 부분
@@ -632,16 +633,32 @@ async def 야목록(interaction: discord.Interaction):
 # =====================
 @bot.tree.command(name="야그려줘", description="AI가 그림을 그려줍니다. (무료 서버 사용)")
 async def 야그려줘_무료(interaction: discord.Interaction, prompt: str):
+    # 1. 봇이 작업 중임을 알림 (생각 중... 표시)
     await interaction.response.defer()
     
-    # 한글 프롬프트를 URL이 이해할 수 있게 인코딩합니다.
-    encoded_prompt = urllib.parse.quote(prompt)
-    image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed={random.randint(1, 100000)}"
-    
-    embed = discord.Embed(title=f"🎨 그림 완성: {prompt}", color=0x1abc9c)
-    embed.set_image(url=image_url)
-    
-    await interaction.followup.send(embed=embed)
+    try:
+        # 2. 한글 검색어를 URL에 쓸 수 있게 변환 (핵심!)
+        encoded_prompt = urllib.parse.quote(prompt)
+        
+        # 3. 이미지 주소 생성 (매번 다른 그림이 나오도록 seed 추가)
+        seed = random.randint(1, 999999)
+        image_url = f"https://pollinations.ai/p/{encoded_prompt}?width=1024&height=1024&seed={seed}&nologo=true"
+        
+        # 4. 임베드 설정
+        embed = discord.Embed(
+            title=f"🎨 요청하신 그림이 완성됐어요!",
+            description=f"**프롬프트:** {prompt}",
+            color=0x1abc9c
+        )
+        embed.set_image(url=image_url)
+        embed.set_footer(text="이미지가 안 보이면 잠시만 기다려 주세요.")
+
+        # 5. 결과 전송 (defer를 사용했으므로 followup.send 사용)
+        await interaction.followup.send(embed=embed)
+
+    except Exception as e:
+        # 에러 발생 시 출력
+        await interaction.followup.send(f"❌ 그림을 그리는 중 오류가 발생했어요: {e}")
 
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
