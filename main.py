@@ -537,6 +537,8 @@ async def 로또(interaction: discord.Interaction):
 # 1. 낚시 데이터 정의
 FISH_DATA = {
     "낡은 장화": {"chance": 15, "price": 0, "is_trash": True},
+    "뭉쳐진 휴지": {"chance": 15, "price": 0, "is_trash": True},
+    "찢어진 신문지": {"chance": 15, "price": 0, "is_trash": True},
     "찌그러진 캔": {"chance": 15, "price": 0, "is_trash": True},
     "피라미": {"chance": 12, "price": 100},
     "붕어": {"chance": 10, "price": 500},
