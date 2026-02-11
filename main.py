@@ -8,6 +8,19 @@ from collections import deque  # 대기열을 위한 deque
 
 from datetime import datetime, timezone, timedelta
 
+# 초성을 추출하는 함수
+def get_chosung(text):
+    CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
+    result = ""
+    for char in text:
+        if '가' <= char <= '힣':
+            char_code = ord(char) - ord('가')
+            chosung_index = char_code // 588
+            result += CHOSUNG_LIST[chosung_index]
+        else:
+            result += char
+    return result
+
 # =====================
 # 설정 부분
 # =====================
@@ -576,7 +589,7 @@ async def 도박(interaction: discord.Interaction, bet: int): # ctx -> interacti
         )
 
 # =====================
-# 명령어: 가사빈칸게임
+# 명령어: 퍼니퀴즈
 # =====================
 # 1. 봇이 켜질 때 슬래시 명령어를 디스코드에 등록하는 설정
 @bot.event
@@ -588,13 +601,13 @@ async def on_ready():
     except Exception as e:
         print(f"동기화 중 오류 발생: {e}")
 
-# =====================
-# 명령어: 가사빈칸게임 (최종 보상형)
-# =====================
 
-@bot.tree.command(name="가사빈칸게임", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (문제당 15초)")
+# =====================
+# 명령어: 퍼니퀴즈 (최종 보상형)
+# ===================== 
+@bot.tree.command(name="퍼니퀴즈", description="10문제 중 가장 많이 맞힌 사람이 3만 원을 획득합니다! (20초 / 10초 후 힌트)")
 async def 가사빈칸(interaction: discord.Interaction):
-    # 1. 문제 데이터
+    # 1. 문제 데이터 (문법 오류 수정 및 40문제 통합)
     lyrics_pool = [
         # --- 국민 가요 & 유명 곡 ---
         {"quiz": "동해 물과 [ ?? ]산이 마르고 닳도록", "answer": "백두"},
@@ -743,7 +756,7 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "곰 세 마리가 [ ?? ] 집에 있어", "answer": "한"},
         {"quiz": "원숭이 엉덩이는 [ ?? ] 빨가면 사과", "answer": "빨개"},
         {"quiz": "비행기 날아라 [ ?? ]라", "answer": "높이"},
-        {"quiz": "꼬부랑 [ ?? ] 꼬부랑 고갯길", "answer": "할머니"},
+        {"quiz": "꼬부랑 [ ?? ]가 꼬부랑 고갯길을", "answer": "할머니"},
         {"quiz": "섬집 아기 엄마가 [ ?? ] 가러 가면", "answer": "굴"},
         {"quiz": "코끼리 아저씨는 [ ?? ]가 손이래", "answer": "코"},
         {"quiz": "개울가에 [ ?? ] 한 마리", "answer": "올챙이"},
@@ -798,59 +811,66 @@ async def 가사빈칸(interaction: discord.Interaction):
         {"quiz": "눈을 감고 [ ?? ]을 들어봐요", "answer": "노래"},
         {"quiz": "모두 다 같이 [ ?? ]", "answer": "박수"},
         {"quiz": "네모난 [ ?? ] 속에 담긴 세상", "answer": "상자"},
-        # --- 추가된 30문제 (명곡 & 스테디셀러) ---
-        {"quiz": "제주도 푸른 밤 그 별 아래 [ ?? ]", "answer": "그대"},
-        {"quiz": "나를 슬프게 하는 [ ?? ]들", "answer": "사람"},
-        {"quiz": "당신은 모르실 거야 얼마나 [ ?? ]했는지", "answer": "사랑"},
-        {"quiz": "님과 함께라면 [ ?? ] 초가삼간도 좋아", "answer": "저푸른초원위에"},
-        {"quiz": "광화문 [ ?? ]길 아래 눈 덮인 조그만 성당", "answer": "연가"},
-        {"quiz": "비 내리는 호남선 [ ?? ] 열차", "answer": "남행"},
-        {"quiz": "노란 [ ?? ]의 사나이", "answer": "샤쓰"},
-        {"quiz": "빨간 [ ?? ]는 사과 사과는 맛있어", "answer": "엉덩이"},
-        {"quiz": "울면 안 돼 울면 안 돼 [ ?? ] 할아버지는", "answer": "산타"},
-        {"quiz": "흰 눈 사이로 [ ?? ]를 타고 달리는 기분", "answer": "썰매"},
-        {"quiz": "아주 멀리 가버렸네 [ ?? ] 보라색 그 향기", "answer": "그대"},
-        {"quiz": "그대 내게 [ ?? ]을 주는 사람", "answer": "행복"},
-        {"quiz": "가을 우체국 앞에서 [ ?? ]를 기다리다", "answer": "그대"},
-        {"quiz": "붉은 [ ?? ]을 다오 붉은 노을을 다오", "answer": "노을"},
-        {"quiz": "네가 [ ?? ] 일은 아니지만 나도 가끔은", "answer": "잘못한"},
-        {"quiz": "어쩌다 마주친 [ ?? ]이 너무 예뻐요", "answer": "그대"},
-        {"quiz": "서른 [ ?? ]에 우린 어디에 있을까", "answer": "즈음"},
-        {"quiz": "너의 [ ?? ]이 들려 내가 가지 못하는 곳에서", "answer": "목소리"},
-        {"quiz": "사랑하기 때문에 [ ?? ] 인사는 하지 마", "answer": "마지막"},
-        {"quiz": "언젠가는 우리 다시 만나리 [ ?? ]은 모습으로", "answer": "헤어진"},
-        {"quiz": "너를 위해 [ ?? ]를 비워둘게", "answer": "내곁"},
-        {"quiz": "먼지가 되어 날아가야지 [ ?? ] 속으로", "answer": "바람"},
-        {"quiz": "비처럼 [ ?? ]처럼 당신을 사랑해요", "answer": "음악"},
-        {"quiz": "내 마음의 [ ?? ]을 닫지 말아줘", "answer": "문"},
-        {"quiz": "추억 속의 [ ?? ]을 찾아 헤매는 나", "answer": "그대"},
-        {"quiz": "그대 고운 [ ?? ]에 이슬방울 맺힐 때", "answer": "눈"},
-        {"quiz": "한 사람을 위해 [ ?? ]를 불러요", "answer": "노래"},
-        {"quiz": "우리의 [ ?? ]은 하늘 아래 흐르네", "answer": "우정"},
-        {"quiz": "나를 잊지 말아요 [ ?? ]은 사랑아", "answer": "못다한"},
-        {"quiz": "하늘을 달리다 [ ?? ]를 향해", "answer": "태양"}
+        {"quiz": "네가 [ ?? ]보다 조금 더 높은 곳에 니가 있을 뿐", "answer": "나"},
+        {"quiz": "비 오는 거리에서 그대 [ ?? ]를 생각해요", "answer": "모습"},
+        {"quiz": "언젠간 가겠지 푸르른 이 [ ?? ]", "answer": "청춘"},
+        {"quiz": "붉은 노을처럼 난 너를 [ ?? ]해", "answer": "사랑"},
+        {"quiz": "그녀를 만나는 곳 [ ?? ]m 전", "answer": "100"},
+        {"quiz": "내 마음의 보석 상자 속의 [ ?? ]들", "answer": "기억"},
+        {"quiz": "어쩌다 마주친 그대 모습이 너무 [ ?? ]어", "answer": "예뻤"},
+        {"quiz": "나 어떡해 너를 [ ?? ] 보낸 뒤", "answer": "떠나"},
+        {"quiz": "여행을 떠나요 즐거운 [ ?? ]으로", "answer": "마음"},
+        {"quiz": "단발머리 하고 그대 [ ?? ]이면", "answer": "웃음"},
+        {"quiz": "나를 봐요 [ ?? ] 보지 말고", "answer": "딴데"},
+        {"quiz": "청바지가 잘 어울리는 [ ?? ]", "answer": "여자"},
+        {"quiz": "저 푸른 초원 위에 [ ?? ]을 짓고", "answer": "그림같은집"},
+        {"quiz": "사랑밖에 난 몰라 그대 내 곁에 [ ?? ]으면", "answer": "있어준다면"},
+        {"quiz": "우리 만남은 [ ?? ]이 아니야", "answer": "우연"},
+        {"quiz": "그대 앞에만 서면 나는 왜 [ ?? ]해지는가", "answer": "작아"},
+        {"quiz": "우리 몸엔 우리 [ ?? ]", "answer": "것이좋은것이여"},
+        {"quiz": "찰랑찰랑 [ ?? ]이 넘치네", "answer": "술잔"},
+        {"quiz": "무조건 무조건 [ ?? ]야", "answer": "이야"},
+        {"quiz": "둥글게 둥글게 빙글빙글 [ ?? ]가며", "answer": "돌아"},
+        {"quiz": "파란 나라를 보았니 [ ?? ]이 가득한", "answer": "꿈과사랑"},
+        {"quiz": "어젯밤 자정 무렵 [ ?? ] 아빠가 나를 불렀지", "answer": "술취하신"},
+        {"quiz": "뒷다리가 쑥 [ ?? ]다리가 쑥", "answer": "앞"},
+        {"quiz": "정글 숲을 지나서 [ ?? ] 가네", "answer": "가자"},
+        {"quiz": "반짝반짝 작은 별 아름답게 [ ?? ]네", "answer": "비치"},
+        {"quiz": "나뭇잎 배 [ ?? ] 띄워", "answer": "살짝"},
+        {"quiz": "나의 살던 고향은 [ ?? ] 꽃 피는 산골", "answer": "꽃피는"},
+        {"quiz": "아카시아 꽃이 활짝 피었네 [ ?? ] 꽃이 활짝 피었네", "answer": "하얀"},
+        {"quiz": "겨울 바람 손이 시려워 [ ?? ]이 시려워", "answer": "발"},
+        {"quiz": "주위를 둘러보면 온통 [ ?? ] 것들뿐", "answer": "네모난"},
+        {"quiz": "노란 풍선이 [ ?? ]로 날아가면", "answer": "하늘"},
+        {"quiz": "단지 널 사랑해 이렇게 [ ?? ]", "answer": "말했지"},
+        {"quiz": "Love Is [ ?? ]", "answer": "보고싶고"},
+        {"quiz": "나를 사랑한다고 [ ?? ] 말해줘", "answer": "자꾸만"},
+        {"quiz": "Gee Gee Gee Gee [ ?? ] 베이베", "answer": "베이베"},
+        {"quiz": "오빤 [ ?? ] 스타일", "answer": "강남"},
+        {"quiz": "그만하자 그만하자 [ ?? ]만 하니까", "answer": "사랑"},
+        {"quiz": "이 밤 그날의 [ ?? ]을 당신의 창 가까이 보낼게요", "answer": "반딧불"},
+        {"quiz": "나는요 [ ?? ]이 좋은걸", "answer": "오빠"},
+        {"quiz": "우리가 만나 [ ?? ]지 못할 추억이 됐다", "answer": "지우"}
     ]
 
-  # 게임 시작 알림
-    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!**\n10문제를 가장 많이 맞힌 분께 **30,000원**을 드립니다! (문제당 15초)")
+    await interaction.response.send_message("🎮 **가사 빈칸 게임 시작!**\n10문제를 가장 많이 맞힌 분께 **30,000원**을 드립니다!\n(제한 시간 20초 | 10초 후 초성 힌트!)")
     await asyncio.sleep(2)
 
-    # 10문제 랜덤 추출
     current_game_pool = random.sample(lyrics_pool, min(10, len(lyrics_pool)))
-    
-    # 점수 저장용 사전 (사용자ID: 맞힌 개수)
     scoreboard = {}
 
     for i, selected in enumerate(current_game_pool, 1):
         quiz_text = selected["quiz"]
-        answer_text = selected["answer"].replace(" ", "") # 공백 제거 정답
+        answer_raw = selected["answer"]
+        answer_text = answer_raw.replace(" ", "")
+        chosung_hint = get_chosung(answer_raw)
 
         embed = discord.Embed(
             title=f"🎵 가사 빈칸 게임 ({i}/10 라운드)",
-            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 15초",
+            description=f"**문제:** `{quiz_text}`\n\n⏱️ **제한 시간:** 20초",
             color=0x00ffcc
         )
-        await interaction.channel.send(embed=embed)
+        quiz_msg = await interaction.channel.send(embed=embed)
 
         def check(m):
             return m.channel == interaction.channel and \
@@ -858,46 +878,47 @@ async def 가사빈칸(interaction: discord.Interaction):
                    not m.author.bot
 
         try:
-            # 정답자가 나올 때까지 최대 15초 대기
-            msg = await bot.wait_for('message', check=check, timeout=15.0)
+            # 1단계: 첫 10초 대기
+            msg = await bot.wait_for('message', check=check, timeout=10.0)
+        except asyncio.TimeoutError:
+            # 2단계: 10초 동안 정답 없으면 초성 힌트 공개
+            hint_embed = discord.Embed(
+                title=f"🎵 가사 빈칸 게임 ({i}/10 라운드) - 힌트 등장!",
+                description=f"**문제:** `{quiz_text}`\n💡 **초성 힌트:** `{chosung_hint}`\n\n⏱️ **남은 시간:** 10초",
+                color=0xffff00
+            )
+            await quiz_msg.edit(embed=hint_embed)
             
-            # 정답자 기록 및 점수 추가
+            try:
+                # 남은 10초 대기
+                msg = await bot.wait_for('message', check=check, timeout=10.0)
+            except asyncio.TimeoutError:
+                await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{answer_raw}]**였습니다.")
+                msg = None
+
+        if msg:
             scoreboard[msg.author.id] = scoreboard.get(msg.author.id, 0) + 1
             await interaction.channel.send(f"✅ **{msg.author.mention}님 정답!** (현재 {scoreboard[msg.author.id]}점)")
-            
-        except asyncio.TimeoutError:
-            await interaction.channel.send(f"⏰ **시간 초과!** 정답은 **[{selected['answer']}]**였습니다.")
 
-        # 라운드 사이 짧은 대기
         if i < 10:
             await asyncio.sleep(2)
 
-    # =====================
-    # 최종 결과 발표
-    # =====================
+    # 최종 결과 및 보상 지급 로직 (기존과 동일)
     if not scoreboard:
-        await interaction.channel.send("🏁 **게임 종료!** 정답자가 없어 우승자가 없습니다.")
+        await interaction.channel.send("🏁 **게임 종료!** 우승자가 없습니다.")
         return
 
-    # 가장 많이 맞힌 점수 확인 및 공동 우승자 처리
     max_score = max(scoreboard.values())
-    final_winners = [user_id for user_id, score in scoreboard.items() if score == max_score]
+    final_winners = [u_id for u_id, score in scoreboard.items() if score == max_score]
     
     result_text = "🏆 **최종 게임 결과** 🏆\n"
-    for user_id, score in scoreboard.items():
-        try:
-            user = await bot.fetch_user(user_id)
-            name = user.display_name
-        except:
-            name = "알 수 없는 사용자"
-        result_text += f"- {name}: {score}점\n"
-
+    for u_id, score in scoreboard.items():
+        user = await bot.fetch_user(u_id)
+        result_text += f"- {user.display_name}: {score}점\n"
     await interaction.channel.send(result_text)
 
-    # 보상 지급
     reward = 30000
     winner_mentions = []
-    
     for w_id in final_winners:
         user_money[w_id] = user_money.get(w_id, 0) + reward
         winner_obj = await bot.fetch_user(w_id)
