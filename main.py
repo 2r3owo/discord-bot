@@ -7,7 +7,7 @@ import os
 import json
 from collections import deque
 from datetime import datetime, timezone
-import psycopg2  # 이 라이브러리가 필요합니다.
+import psycopg2 
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 
