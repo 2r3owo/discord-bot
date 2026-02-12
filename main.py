@@ -79,13 +79,13 @@ FFMPEG_OPTIONS = {
 }
 
 YDL_OPTIONS = {
-    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
+    'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
-    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
+    'cookiesfrombrowser': ('firefox',),
 }
 
 # =====================
