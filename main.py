@@ -91,16 +91,31 @@ YDL_OPTIONS = {
 # =====================
 # 보조 함수 (대기열 관리) - 반복 포함 수정본
 # =====================
+from collections import deque
+
+queues = {}        # guild_id: deque()
+loop_modes = {}    # guild_id: 0=끔, 1=한곡반복, 2=전체반복
+
 async def check_queue(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     voice_client = interaction.guild.voice_client
 
+    if not voice_client:
+        return
+
     # 대기열에 곡이 있으면
     if guild_id in queues and queues[guild_id]:
+
         next_song = queues[guild_id].popleft()
 
-        # 🔁 반복 모드일 경우 다시 큐에 추가
-        if loop_states.get(guild_id):
+        loop_mode = loop_modes.get(guild_id, 0)
+
+        # 🔁 한 곡 반복 (같은 곡 다시 맨 앞에)
+        if loop_mode == 1:
+            queues[guild_id].appendleft(next_song)
+
+        # 🔁 전체 반복 (곡을 맨 뒤로)
+        elif loop_mode == 2:
             queues[guild_id].append(next_song)
 
         source = discord.FFmpegOpusAudio(
@@ -109,20 +124,23 @@ async def check_queue(interaction: discord.Interaction):
             **FFMPEG_OPTIONS
         )
 
-        voice_client.play(
-            source,
-            after=lambda e: asyncio.run_coroutine_threadsafe(
+        def after_playing(error):
+            if error:
+                print(f"재생 오류: {error}")
+
+            asyncio.run_coroutine_threadsafe(
                 check_queue(interaction),
                 bot.loop
             )
-        )
+
+        voice_client.play(source, after=after_playing)
 
         await interaction.channel.send(
             f"🎶 다음 곡 재생: **{next_song['title']}**"
         )
 
-    # 대기열이 비어 있으면 정리
     else:
+        # 대기열이 비면 정리
         if guild_id in queues:
             del queues[guild_id]
 
