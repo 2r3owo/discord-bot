@@ -176,38 +176,62 @@ YDL_OPTIONS = {
 } 
 
 # ===================== 
-# 보조 함수 (대기열 및 반복 재생 관리) - 수정됨 
+# 보조 함수 (대기열 및 반복 재생 관리) - 안정 버전
 # ===================== 
-def check_queue(interaction): 
-    """노래 재생이 끝나면 호출되어 다음 곡이나 반복 곡을 재생합니다.""" 
-    guild_id = interaction.guild.id 
-    voice_client = interaction.guild.voice_client 
+def check_queue(guild):
+    """노래 재생이 끝나면 호출되어 다음 곡이나 반복 곡을 재생합니다."""
+    guild_id = guild.id
+    voice_client = guild.voice_client
 
-    if not voice_client: 
-        return 
+    if not voice_client:
+        return
 
-    # 1. 한 곡 반복 재생이 켜져 있는 경우 (최우선 순위) 
-    if repeat_status.get(guild_id, False) and guild_id in current_song_info: 
-        song = current_song_info[guild_id] 
-        # Railway 환경용 executable="ffmpeg" 포함 
-        source = discord.FFmpegOpusAudio.from_probe(song['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
-        voice_client.play(source, after=lambda e: check_queue(interaction)) 
-        return 
+    # 1️⃣ 한 곡 반복 재생
+    if repeat_status.get(guild_id, False) and guild_id in current_song_info:
+        song = current_song_info[guild_id]
 
-    # 2. 다음 대기열 곡 재생 
-    if guild_id in queues and queues[guild_id]: 
-        next_song = queues[guild_id].popleft() 
-        current_song_info[guild_id] = next_song  # 현재 곡 정보 업데이트 
-         
-        source = discord.FFmpegOpusAudio.from_probe(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
-        voice_client.play(source, after=lambda e: check_queue(interaction)) 
-         
-        # 슬래시 커맨드 대응을 위해 follow-up 혹은 일반 전송 사용 (interaction 객체 사용) 
-        bot.loop.create_task(interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**")) 
-    else: 
-        # 대기열이 비었으면 현재 곡 정보와 반복 설정 초기화 
-        if guild_id in current_song_info: 
-            del current_song_info[guild_id] 
+        source = discord.FFmpegOpusAudio.from_probe(
+            song['url'],
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
+        )
+
+        def after_play(error):
+            if error:
+                print("재생 오류:", error)
+            check_queue(guild)
+
+        voice_client.play(source, after=after_play)
+        return
+
+    # 2️⃣ 다음 곡 재생
+    if guild_id in queues and queues[guild_id]:
+        next_song = queues[guild_id].popleft()
+        current_song_info[guild_id] = next_song
+
+        source = discord.FFmpegOpusAudio.from_probe(
+            next_song['url'],
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
+        )
+
+        def after_play(error):
+            if error:
+                print("재생 오류:", error)
+            check_queue(guild)
+
+        voice_client.play(source, after=after_play)
+
+        # interaction 대신 안전한 채널 사용
+        channel = guild.system_channel
+        if channel and channel.permissions_for(guild.me).send_messages:
+            bot.loop.create_task(
+                channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**")
+            )
+
+    else:
+        # 대기열이 비었으면 현재 곡 정보 초기화
+        current_song_info.pop(guild_id, None)
 
 # ===================== 
 # 자동 인사 스케줄러 
