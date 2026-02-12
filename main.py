@@ -153,6 +153,8 @@ def set_user_data(data_dict, guild_id, user_id, value):
 
 # 노래 대기열 저장소 (서버별 관리)
 queues = {}
+repeat_status = {}      # 추가: 서버별 반복 재생 상태 {guild_id: bool}
+current_song_info = {}  # 추가: 서버별 현재 재생 곡 정보 {guild_id: {'url': url, 'title': title}}
 
 # YDL 및 FFMPEG 옵션
 FFMPEG_OPTIONS = {
@@ -171,21 +173,38 @@ YDL_OPTIONS = {
 }
 
 # =====================
-# 보조 함수 (대기열 관리) - 수정됨
+# 보조 함수 (대기열 및 반복 재생 관리) - 수정됨
 # =====================
-def check_queue(ctx):
-    """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
-    if ctx.guild.id in queues and queues[ctx.guild.id]:
-        next_song = queues[ctx.guild.id].popleft()
+def check_queue(interaction):
+    """노래 재생이 끝나면 호출되어 다음 곡이나 반복 곡을 재생합니다."""
+    guild_id = interaction.guild.id
+    voice_client = interaction.guild.voice_client
+
+    if not voice_client:
+        return
+
+    # 1. 한 곡 반복 재생이 켜져 있는 경우 (최우선 순위)
+    if repeat_status.get(guild_id, False) and guild_id in current_song_info:
+        song = current_song_info[guild_id]
+        # Railway 환경용 executable="ffmpeg" 포함
+        source = discord.FFmpegOpusAudio.from_probe(song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
+        voice_client.play(source, after=lambda e: check_queue(interaction))
+        return
+
+    # 2. 다음 대기열 곡 재생
+    if guild_id in queues and queues[guild_id]:
+        next_song = queues[guild_id].popleft()
+        current_song_info[guild_id] = next_song  # 현재 곡 정보 업데이트
         
-        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
-        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
+        source = discord.FFmpegOpusAudio.from_probe(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
+        voice_client.play(source, after=lambda e: check_queue(interaction))
         
-        bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
+        # 슬래시 커맨드 대응을 위해 follow-up 혹은 일반 전송 사용 (interaction 객체 사용)
+        bot.loop.create_task(interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
     else:
-        if ctx.guild.id in queues:
-            del queues[ctx.guild.id]
+        # 대기열이 비었으면 현재 곡 정보와 반복 설정 초기화
+        if guild_id in current_song_info:
+            del current_song_info[guild_id]
 
 # =====================
 # 유틸리티 함수
@@ -1238,24 +1257,75 @@ async def on_ready():
     if not dinner.is_running(): dinner.start()
     if not test_greeting.is_running(): test_greeting.start()
 
-# =====================
-# 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
-# =====================
+# ===================== 
+# 음성 및 노래 재생 관련 커맨드
+# ===================== 
 
-@bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
-async def 야드루와(interaction: discord.Interaction):
-    if not interaction.user.voice:
-        return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
+# '야재생해' 명령어 내 정보 저장 부분 확인
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.") 
+async def 야재생해(interaction: discord.Interaction, search: str): 
+    # ... (생략: 접속 체크 로직) ...
+    try: 
+        queues[interaction.guild.id] = deque() 
+        # ... (생략: yt_dlp 추출 로직) ...
+        
+        # [중요] 현재 곡 정보를 저장해야 '야당겨봐'와 '야계속해'가 작동합니다.
+        current_song_info[interaction.guild.id] = {'url': info['url'], 'title': info['title']}
 
+        if interaction.guild.voice_client.is_playing(): 
+            interaction.guild.voice_client.stop() 
+         
+        source = await discord.FFmpegOpusAudio.from_probe(info['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
+        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) 
+        await interaction.followup.send(f"🎶 즉시 재생 시작: **{info['title']}**") 
+    except Exception as e: 
+        await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
+
+# '야당겨봐' 명령어 (조금 더 안전하게 수정)
+@bot.tree.command(name="야당겨봐", description="현재 곡을 특정 시간으로 이동합니다. (예: 1:30, 100)")
+@app_commands.describe(time="이동할 시간 (예: 1:30 또는 초 단위 숫자)")
+async def 야당겨봐(interaction: discord.Interaction, time: str):
+    # 1. 상태 체크
+    vc = interaction.guild.voice_client
+    if not vc or not vc.is_playing():
+        return await interaction.response.send_message("❌ 현재 재생 중인 곡이 없습니다.", ephemeral=True)
+
+    guild_id = interaction.guild.id
+    if guild_id not in current_song_info:
+        return await interaction.response.send_message("❌ 곡 정보를 찾을 수 없어서 시간을 이동할 수 없어요.", ephemeral=True)
+
+    await interaction.response.defer()
+
+    # 2. 시간 파싱
     try:
-        if interaction.guild.voice_client:
-            if interaction.guild.voice_client.channel != interaction.user.voice.channel:
-                await interaction.guild.voice_client.move_to(interaction.user.voice.channel)
+        if ":" in time:
+            parts = time.split(":")
+            if len(parts) == 2: # 분:초
+                seek_seconds = int(parts[0]) * 60 + int(parts[1])
+            elif len(parts) == 3: # 시:분:초
+                seek_seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
         else:
-            await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
-        await interaction.response.send_message("🎧 들어왔어요!")
+            seek_seconds = int(time)
+    except ValueError:
+        return await interaction.followup.send("❌ 시간 형식이 잘못되었습니다. (예: 1:30 또는 90)")
+
+    # 3. 재생 재시작 (FFmpeg -ss 옵션 사용)
+    song = current_song_info[guild_id]
+    SEEK_OPTIONS = FFMPEG_OPTIONS.copy()
+    # 기존 options와 ss 옵션을 합침
+    SEEK_OPTIONS['before_options'] = SEEK_OPTIONS.get('before_options', '') + f" -ss {seek_seconds}"
+
+    # stop()을 하면 after=check_queue가 실행되어 다음 곡으로 넘어갈 수 있으므로 주의해야 합니다.
+    # 해결책: 잠시 after를 None으로 만들거나, 특정 플래그를 세울 수 있지만 
+    # 여기서는 간단히 다시 play를 호출하는 방식을 유지합니다.
+    vc.stop()
+    
+    try:
+        source = await discord.FFmpegOpusAudio.from_probe(song['url'], executable="ffmpeg", **SEEK_OPTIONS)
+        vc.play(source, after=lambda e: check_queue(interaction))
+        await interaction.followup.send(f"⏩ **{time}** 지점으로 이동하여 재생을 재개합니다!")
     except Exception as e:
-        await interaction.response.send_message(f"❌ 접속 중 오류 발생: {e}", ephemeral=True)
+        await interaction.followup.send(f"❌ 이동 중 오류 발생: {e}")
 
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
 async def 야꺼져(interaction: discord.Interaction):
