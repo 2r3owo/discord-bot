@@ -9,7 +9,6 @@ import os
 import json 
 import psycopg2 
 from collections import deque 
-# [수정] 여기에 timedelta만 딱 추가했어. 이거 없으면 시간 함수 다 터져.
 from datetime import datetime, timezone, timedelta 
 
 # ===================== 
@@ -29,11 +28,9 @@ DATABASE_URL = os.getenv('DATABASE_URL')
 def get_db_connection(): 
     return psycopg2.connect(DATABASE_URL, sslmode='require') 
 
-# 서버가 켜질 때 테이블 구조를 잡는 함수 
 def init_db(): 
     conn = get_db_connection() 
     cur = conn.cursor() 
-    # lotto_count와 fish_inventory를 TEXT로 생성해야 날짜나 딕셔너리 저장이 가능합니다. 
     cur.execute(''' 
         CREATE TABLE IF NOT EXISTS user_data ( 
             guild_id BIGINT, 
@@ -49,27 +46,22 @@ def init_db():
     cur.close() 
     conn.close() 
 
-# 모든 데이터를 한 번에 가져오는 함수 
 def load_all_data(guild_id, user_id): 
     conn = get_db_connection() 
     cur = conn.cursor() 
-    # [수정] 아까 네가 준 코드에서 쿼리문이 중간에 잘려서 에러 났던 거 한 줄로 합쳤어.
     cur.execute("SELECT money, daily_pay, lotto_count, fish_inventory FROM user_data WHERE guild_id = %s AND user_id = %s", (guild_id, user_id)) 
     row = cur.fetchone() 
     cur.close() 
     conn.close() 
     if row: 
-        # DB에 저장된 JSON 글자를 다시 파이썬 딕셔너리로 변환 
         inv = json.loads(row[3]) if row[3] else {} 
         return row[0], row[1], row[2], inv 
     else: 
         return 0, None, '0', {} 
 
-# 모든 데이터를 한 번에 저장하는 함수 
 def save_all_data(guild_id, user_id, money, daily_pay, lotto_count, inventory): 
     conn = get_db_connection() 
     cur = conn.cursor() 
-    # 파이썬 딕셔너리를 JSON 글자로 변환하여 저장 
     inv_json = json.dumps(inventory, ensure_ascii=False) 
     cur.execute(''' 
         INSERT INTO user_data (guild_id, user_id, money, daily_pay, lotto_count, fish_inventory)  
@@ -84,7 +76,6 @@ def save_all_data(guild_id, user_id, money, daily_pay, lotto_count, inventory):
     cur.close() 
     conn.close() 
 
-# DB에서 돈 가져오는 함수 
 def load_money(guild_id, user_id): 
     conn = get_db_connection() 
     cur = conn.cursor() 
@@ -92,9 +83,8 @@ def load_money(guild_id, user_id):
     row = cur.fetchone() 
     cur.close() 
     conn.close() 
-    return row[0] if row else 0  # 데이터 없으면 0원 반환 
+    return row[0] if row else 0 
 
-# DB에 돈 저장/업데이트하는 함수 
 def save_money(guild_id, user_id, amount): 
     conn = get_db_connection() 
     cur = conn.cursor() 
@@ -108,7 +98,6 @@ def save_money(guild_id, user_id, amount):
     cur.close() 
     conn.close() 
 
-# 초성을 추출하는 함수 
 def get_chosung(text): 
     CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'] 
     result = "" 
@@ -121,12 +110,11 @@ def get_chosung(text):
             result += char 
     return result 
 
-# [수정] 중복 정의된 now_kst 중에서 에러 없는 버전 딱 하나만 남겼어.
 def now_kst(): 
     return datetime.now(timezone(timedelta(hours=9))) 
 
 # ===================== 
-# 데이터 저장 및 관리 (서버별 독립 구조) 
+# 데이터 저장 및 관리 
 # ===================== 
 user_money = {} 
 user_daily_pay = {} 
@@ -134,9 +122,8 @@ user_lotto_count = {}
 user_inventory = {} 
 user_fortune_data = {} 
 user_match_data = {} 
-active_games = {}  # 퀴즈 중단 방지용 
+active_games = {} 
 
-# [서버별 데이터를 안전하게 가져오기 위한 함수] 
 def get_user_data(data_dict, guild_id, user_id, default_value): 
     g_id = str(guild_id) 
     u_id = str(user_id) 
@@ -146,7 +133,6 @@ def get_user_data(data_dict, guild_id, user_id, default_value):
         data_dict[g_id][u_id] = default_value 
     return data_dict[g_id][u_id] 
 
-# [서버별 데이터를 저장하기 위한 함수] 
 def set_user_data(data_dict, guild_id, user_id, value): 
     g_id = str(guild_id) 
     u_id = str(user_id) 
@@ -154,29 +140,28 @@ def set_user_data(data_dict, guild_id, user_id, value):
         data_dict[g_id] = {} 
     data_dict[g_id][u_id] = value 
 
-# 노래 대기열 저장소 (서버별 관리) 
+# --- 음악 관련 변수 ---
 queues = {} 
-repeat_status = {}      # 추가: 서버별 반복 재생 상태 {guild_id: bool} 
-current_song_info = {}  # 추가: 서버별 현재 재생 곡 정보 {guild_id: {'url': url, 'title': title}} 
+repeat_status = {}      # 서버별 반복 재생 여부
+current_song_info = {}  # 서버별 지금 나오는 노래 정보
 
-# YDL 및 FFMPEG 옵션 
 FFMPEG_OPTIONS = { 
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 
-    'options': '-vn', # 비디오는 빼고 오디오만! 
+    'options': '-vn', 
 } 
 
 YDL_OPTIONS = { 
-    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정 
+    'format': 'bestaudio/best', 
     'noplaylist': True, 
     'quiet': True, 
     'no_warnings': True, 
     'default_search': 'auto', 
     'nocheckcertificate': True, 
-    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키! 
+    'cookiefile': 'cookies.txt', 
 } 
 
 # ===================== 
-# 보조 함수 (대기열 및 반복 재생 관리) - 수정됨 
+# 보조 함수 (대기열 및 반복 재생 관리) 
 # ===================== 
 def check_queue(interaction): 
     """노래 재생이 끝나면 호출되어 다음 곡이나 반복 곡을 재생합니다.""" 
@@ -186,26 +171,23 @@ def check_queue(interaction):
     if not voice_client: 
         return 
 
-    # 1. 한 곡 반복 재생이 켜져 있는 경우 (최우선 순위) 
+    # 1. 반복 재생 모드인 경우 (똑같은 곡 다시 재생)
     if repeat_status.get(guild_id, False) and guild_id in current_song_info: 
         song = current_song_info[guild_id] 
-        # Railway 환경용 executable="ffmpeg" 포함 
         source = discord.FFmpegOpusAudio.from_probe(song['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
         voice_client.play(source, after=lambda e: check_queue(interaction)) 
         return 
 
-    # 2. 다음 대기열 곡 재생 
+    # 2. 반복 재생이 아닐 때 (다음 곡 재생)
     if guild_id in queues and queues[guild_id]: 
         next_song = queues[guild_id].popleft() 
-        current_song_info[guild_id] = next_song  # 현재 곡 정보 업데이트 
+        current_song_info[guild_id] = next_song 
          
         source = discord.FFmpegOpusAudio.from_probe(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
         voice_client.play(source, after=lambda e: check_queue(interaction)) 
-         
-        # 슬래시 커맨드 대응을 위해 follow-up 혹은 일반 전송 사용 (interaction 객체 사용) 
         bot.loop.create_task(interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**")) 
     else: 
-        # 대기열이 비었으면 현재 곡 정보와 반복 설정 초기화 
+        # 더 이상 재생할 곡이 없으면 정보 삭제
         if guild_id in current_song_info: 
             del current_song_info[guild_id]
 
@@ -222,11 +204,11 @@ async def on_ready():
 @bot.tree.command(name="반복", description="현재 재생 중인 곡을 반복 재생하거나 해제합니다.")
 async def loop(interaction: discord.Interaction):
     guild_id = interaction.guild.id
-    # 현재 상태 반전
-    repeat_status[guild_id] = not repeat_status.get(guild_id, False)
+    current = repeat_status.get(guild_id, False)
+    repeat_status[guild_id] = not current
     
-    status_text = "✅ **활성화**" if repeat_status[guild_id] else "❌ **비활성화**"
-    await interaction.response.send_message(f"🔁 현재 곡 반복 재생이 {status_text} 되었습니다.")
+    status = "✅ 켜짐" if repeat_status[guild_id] else "❌ 꺼짐"
+    await interaction.response.send_message(f"🔁 현재 곡 반복 재생: {status}")
 
 @bot.tree.command(name="재생", description="유튜브 노래를 재생합니다.") 
 async def play(interaction: discord.Interaction, search: str): 
@@ -247,7 +229,7 @@ async def play(interaction: discord.Interaction, search: str):
             title = info['title'] 
             song_data = {'url': url, 'title': title} 
         except Exception as e: 
-            return await interaction.followup.send(f"❌ 노래를 찾을 수 없습니다: {e}") 
+            return await interaction.followup.send(f"❌ 노래를 찾을 수 없습니다.") 
 
     if voice_client.is_playing(): 
         if guild_id not in queues: 
@@ -255,36 +237,29 @@ async def play(interaction: discord.Interaction, search: str):
         queues[guild_id].append(song_data) 
         await interaction.followup.send(f"✅ 대기열 추가: **{title}**") 
     else: 
-        # [중요] 반복 재생을 위해 현재 곡 정보를 저장합니다.
+        # 노래를 틀 때 현재 곡 정보를 저장해야 나중에 반복이 가능합니다!
         current_song_info[guild_id] = song_data
-        
-        # Railway 환경용 executable="ffmpeg" 포함 
         source = discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS) 
         voice_client.play(source, after=lambda e: check_queue(interaction)) 
         await interaction.followup.send(f"🎶 **{title}** 재생 시작!") 
 
-@bot.tree.command(name="스킵", description="현재 재생 중인 노래를 건너뜁니다.") 
+@bot.tree.command(name="스킵", description="노래 건너뛰기") 
 async def skip(interaction: discord.Interaction): 
     if interaction.guild.voice_client and interaction.guild.voice_client.is_playing(): 
-        # 스킵 시에는 일시적으로 반복 재생을 무시해야 하므로 상태를 체크할 수 있지만, 
-        # 보통은 그냥 stop()을 호출하여 after 콜백(check_queue)이 실행되게 합니다. 
-        # 만약 반복 재생 중일 때 스킵하면 같은 곡이 다시 나올 수 있으므로 
-        # 스킵 시에는 반복 상태를 잠시 체크하거나 안내하는 것이 좋습니다.
         interaction.guild.voice_client.stop() 
-        await interaction.response.send_message("⏭️ 노래를 건너뛰었습니다.") 
+        await interaction.response.send_message("⏭️ 스킵했습니다.") 
     else: 
-        await interaction.response.send_message("❌ 현재 재생 중인 노래가 없습니다.") 
+        await interaction.response.send_message("❌ 재생 중인 노래가 없어요.") 
 
-@bot.tree.command(name="정지", description="노래를 정지하고 음성 채널에서 나갑니다.") 
+@bot.tree.command(name="정지", description="음악 종료") 
 async def stop(interaction: discord.Interaction): 
     if interaction.guild.voice_client: 
         await interaction.guild.voice_client.disconnect() 
-        guild_id = interaction.guild.id 
-        if guild_id in queues: 
-            queues[guild_id].clear() 
-        await interaction.response.send_message("👋 연결을 종료하고 대기열을 비웠습니다.") 
+        if interaction.guild.id in queues: 
+            queues[interaction.guild.id].clear() 
+        await interaction.response.send_message("👋 종료!") 
     else: 
-        await interaction.response.send_message("❌ 봇이 음성 채널에 있지 않습니다.")
+        await interaction.response.send_message("❌ 연결되어 있지 않아요.")
 
 # ===================== 
 # 자동 인사 스케줄러 
