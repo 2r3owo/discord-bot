@@ -1471,11 +1471,19 @@ async def 야멈춰(interaction: discord.Interaction):
 
 @bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
 async def 야넘겨(interaction: discord.Interaction):
-    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
-        interaction.guild.voice_client.stop()
-        await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
-    else:
-        await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+
+    voice_client = interaction.guild.voice_client
+
+    if not voice_client:
+        return await interaction.response.send_message(
+            "❌ 음성 채널에 연결되어 있지 않습니다.",
+            ephemeral=True
+        )
+
+    # 🔥 무조건 stop() 호출
+    voice_client.stop()
+
+    await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
 
 @bot.tree.command(name="야목록", description="현재 노래 대기열을 확인합니다.")
 async def 야목록(interaction: discord.Interaction):
