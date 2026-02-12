@@ -271,9 +271,8 @@ async def morning():
         "morning",
         6,
         0,
-        "@everyone 기상! 기상! ٩(◕ᗜ◕)و 햇살이 똑똑똑~ 오늘 하루도 귀엽게 시작해 보자구요! ☀️"
+        "@everyone 기상! 기상! 햇살이 똑똑똑~ 오늘 하루도 힘내보자구요!! ☀️"
     )
-
 
 @tasks.loop(minutes=1)
 async def lunch():
@@ -284,7 +283,6 @@ async def lunch():
         "@everyone 🍚 점심시간! 맛있게 드세요!"
     )
 
-
 @tasks.loop(minutes=1)
 async def dinner():
     await send_once(
@@ -293,7 +291,6 @@ async def dinner():
         0,
         "@everyone 🛌 오늘도 고생했어요! 저녁 챙겨드세요!"
     )
-
 
 # =====================
 # 🧪 테스트용 인사 (14:00)
@@ -314,18 +311,19 @@ async def test_greeting():
 @bot.event
 async def on_ready():
     print(f"✅ 봇 로그인 완료: {bot.user}")
+    
+    # 슬래시 커맨드 동기화
+    try:
+        synced = await bot.tree.sync()
+        print(f"동기화된 명령어 개수: {len(synced)}개")
+    except Exception as e:
+        print(f"동기화 중 오류 발생: {e}")
 
-    if not morning.is_running():
-        morning.start()
-
-    if not lunch.is_running():
-        lunch.start()
-
-    if not dinner.is_running():
-        dinner.start()
-
-    if not test_greeting.is_running():
-        test_greeting.start()
+    # 루프 시작 (중복 방지 체크 포함)
+    loops = [morning, lunch, dinner, test_greeting]
+    for task in loops:
+        if not task.is_running():
+            task.start()
 
 # =====================
 # 명령어: 오늘의운세 (서버별 독립 버전)
@@ -476,7 +474,7 @@ async def 궁합(interaction: discord.Interaction, user: discord.Member): # 1. c
     await interaction.response.send_message(embed=embed)
 
 # =====================
-# 경제 시스템: 돈내놔 (데이터베이스 연동 버전)
+# 경제 시스템: 돈내놔 (수정 완료 버전)
 # =====================
 @bot.tree.command(name="돈내놔", description="이 서버에서 하루 3번, 10,000원씩 지원금을 받습니다.")
 async def 돈내놔(interaction: discord.Interaction):
@@ -485,7 +483,6 @@ async def 돈내놔(interaction: discord.Interaction):
     today = str(now_kst().date())
 
     # 1. DB에서 현재 돈, 마지막 지급 정보, 로또 횟수를 가져옵니다.
-    # 기존 코드의 load_all_data 함수를 사용합니다.
     money, daily_info_str, lotto = load_all_data(g_id, u_id)
 
     # 2. 날짜와 횟수 분석 (형식: "2023-10-27|1")
@@ -493,6 +490,7 @@ async def 돈내놔(interaction: discord.Interaction):
         last_date, count = daily_info_str.split("|")
         count = int(count)
     else:
+        # 정보가 없거나 형식이 다르면 초기값 설정
         last_date, count = today, 0
 
     # 3. 날짜가 바뀌었으면 횟수 초기화
@@ -506,7 +504,7 @@ async def 돈내놔(interaction: discord.Interaction):
         new_count = count + 1
         new_daily_info = f"{today}|{new_count}" # 날짜와 횟수를 합쳐서 저장
         
-        # 5. DB에 한꺼번에 저장
+        # 5. DB에 한꺼번에 저장 (함수 정의에 따라 인자 순서 확인 필요)
         save_all_data(g_id, u_id, new_money, new_daily_info, lotto)
         
         await interaction.response.send_message(
@@ -515,9 +513,11 @@ async def 돈내놔(interaction: discord.Interaction):
             f"💵 현재 서버 잔고: {new_money:,}원"
         )
     else:
+        # 6. 수정 부분: status=True를 제거함
+        # 본인에게만 경고를 띄우고 싶다면 ephemeral=True를 사용하세요.
         await interaction.response.send_message(
-            f"⚠️ 이 서버에서는 오늘 이미 3번 다 받으셨어요! 내일 다시 오세요.", 
-            status=True # 기존 ephemeral=True 대신 일반 메시지로 보내거나 유지 가능
+            f"⚠️ {interaction.user.mention}님, 이 서버에서는 오늘 이미 3번 다 받으셨어요! 내일 다시 오세요.", 
+            ephemeral=True  # 이 옵션을 쓰면 본인에게만 메시지가 보입니다.
         )
         
 # =====================
@@ -680,7 +680,7 @@ FISH_DATA = {
     "🐡복어": {"chance": 4, "price": 4500},
     "🪼해파리": {"chance": 4, "price": 4000},
     "🐙문어": {"chance": 3, "price": 7000},
-    "r🐢거북이": {"chance": 2, "price": 10000},
+    "🐢거북이": {"chance": 2, "price": 10000},
     "🐚소라개": {"chance": 1, "price": 5000},
     "🦭물개": {"chance": 0.5, "price": 30000},
     "🦈상어": {"chance": 0.3, "price": 15000},
