@@ -1260,24 +1260,48 @@ async def on_ready():
 # 음성 및 노래 재생 관련 커맨드
 # ===================== 
 
-# '야재생해' 명령어 내 정보 저장 부분 확인
-@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.") 
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)") 
 async def 야재생해(interaction: discord.Interaction, search: str): 
-    # ... (생략: 접속 체크 로직) ...
+    # 슬래시 커맨드는 응답 시간이 짧으므로 미리 생각 중임을 알립니다.
+    await interaction.response.defer()
+
+    # 1. 유저가 음성 채널에 있는지 확인
+    if not interaction.user.voice:
+        return await interaction.followup.send("❌ 먼저 음성 채널에 접속해 주세요!")
+
+    # 2. 봇이 음성 채널에 접속 중인지 확인 및 접속
+    if not interaction.guild.voice_client:
+        await interaction.user.voice.channel.connect()
+    
     try: 
+        # 대기열 초기화
         queues[interaction.guild.id] = deque() 
-        # ... (생략: yt_dlp 추출 로직) ...
         
-        # [중요] 현재 곡 정보를 저장해야 '야당겨봐'와 '야계속해'가 작동합니다.
+        # yt_dlp 옵션 (기존 코드에 정의된 ytdl 변수를 사용한다고 가정)
+        loop = asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(f"ytsearch:{search}", download=False))
+        
+        if 'entries' not in data or not data['entries']:
+            return await interaction.followup.send("❌ 검색 결과가 없습니다.")
+            
+        info = data['entries'][0]
+        
+        # [중요] 현재 곡 정보를 저장 (야당겨봐, 야계속해 연동용)
         current_song_info[interaction.guild.id] = {'url': info['url'], 'title': info['title']}
 
+        # 이미 재생 중이라면 중지 (stop을 하면 보통 after 콜백이 실행되니 주의 필요)
         if interaction.guild.voice_client.is_playing(): 
             interaction.guild.voice_client.stop() 
          
+        # 오디오 소스 생성 및 재생
         source = await discord.FFmpegOpusAudio.from_probe(info['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
         interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) 
+        
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{info['title']}**") 
+
     except Exception as e: 
+        # 로그에도 에러 출력
+        print(f"Error in 야재생해: {e}")
         await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
 
 # '야당겨봐' 명령어 (조금 더 안전하게 수정)
