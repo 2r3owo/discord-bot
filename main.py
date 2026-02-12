@@ -207,7 +207,84 @@ def check_queue(interaction):
     else: 
         # 대기열이 비었으면 현재 곡 정보와 반복 설정 초기화 
         if guild_id in current_song_info: 
-            del current_song_info[guild_id] 
+            del current_song_info[guild_id]
+
+# ===================== 
+# 명령어 부분 
+# ===================== 
+
+@bot.event 
+async def on_ready(): 
+    init_db() 
+    await bot.tree.sync() 
+    print(f'Logged in as {bot.user.name}') 
+
+@bot.tree.command(name="반복", description="현재 재생 중인 곡을 반복 재생하거나 해제합니다.")
+async def loop(interaction: discord.Interaction):
+    guild_id = interaction.guild.id
+    # 현재 상태 반전
+    repeat_status[guild_id] = not repeat_status.get(guild_id, False)
+    
+    status_text = "✅ **활성화**" if repeat_status[guild_id] else "❌ **비활성화**"
+    await interaction.response.send_message(f"🔁 현재 곡 반복 재생이 {status_text} 되었습니다.")
+
+@bot.tree.command(name="재생", description="유튜브 노래를 재생합니다.") 
+async def play(interaction: discord.Interaction, search: str): 
+    await interaction.response.defer() 
+    guild_id = interaction.guild.id 
+
+    if not interaction.user.voice: 
+        return await interaction.followup.send("먼저 음성 채널에 입장해주세요!") 
+
+    voice_client = interaction.guild.voice_client 
+    if not voice_client: 
+        voice_client = await interaction.user.voice.channel.connect() 
+
+    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl: 
+        try: 
+            info = ydl.extract_info(f"ytsearch:{search}", download=False)['entries'][0] 
+            url = info['url'] 
+            title = info['title'] 
+            song_data = {'url': url, 'title': title} 
+        except Exception as e: 
+            return await interaction.followup.send(f"❌ 노래를 찾을 수 없습니다: {e}") 
+
+    if voice_client.is_playing(): 
+        if guild_id not in queues: 
+            queues[guild_id] = deque() 
+        queues[guild_id].append(song_data) 
+        await interaction.followup.send(f"✅ 대기열 추가: **{title}**") 
+    else: 
+        # [중요] 반복 재생을 위해 현재 곡 정보를 저장합니다.
+        current_song_info[guild_id] = song_data
+        
+        # Railway 환경용 executable="ffmpeg" 포함 
+        source = discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS) 
+        voice_client.play(source, after=lambda e: check_queue(interaction)) 
+        await interaction.followup.send(f"🎶 **{title}** 재생 시작!") 
+
+@bot.tree.command(name="스킵", description="현재 재생 중인 노래를 건너뜁니다.") 
+async def skip(interaction: discord.Interaction): 
+    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing(): 
+        # 스킵 시에는 일시적으로 반복 재생을 무시해야 하므로 상태를 체크할 수 있지만, 
+        # 보통은 그냥 stop()을 호출하여 after 콜백(check_queue)이 실행되게 합니다. 
+        # 만약 반복 재생 중일 때 스킵하면 같은 곡이 다시 나올 수 있으므로 
+        # 스킵 시에는 반복 상태를 잠시 체크하거나 안내하는 것이 좋습니다.
+        interaction.guild.voice_client.stop() 
+        await interaction.response.send_message("⏭️ 노래를 건너뛰었습니다.") 
+    else: 
+        await interaction.response.send_message("❌ 현재 재생 중인 노래가 없습니다.") 
+
+@bot.tree.command(name="정지", description="노래를 정지하고 음성 채널에서 나갑니다.") 
+async def stop(interaction: discord.Interaction): 
+    if interaction.guild.voice_client: 
+        await interaction.guild.voice_client.disconnect() 
+        guild_id = interaction.guild.id 
+        if guild_id in queues: 
+            queues[guild_id].clear() 
+        await interaction.response.send_message("👋 연결을 종료하고 대기열을 비웠습니다.") 
+    else: 
+        await interaction.response.send_message("❌ 봇이 음성 채널에 있지 않습니다.")
 
 # ===================== 
 # 자동 인사 스케줄러 
