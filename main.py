@@ -1412,17 +1412,40 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
-            if 'entries' in info: info = info['entries'][0]
+            info = await loop.run_in_executor(
+                None,
+                lambda: ydl.extract_info(
+                    f"ytsearch:{search}" if not search.startswith("https://") else search,
+                    download=False
+                )
+            )
+            if 'entries' in info:
+                info = info['entries'][0]
         
         url = info['url']
         title = info['title']
+
+        # 🔥 현재 곡 정보 저장 (중요)
+        current_song_info[interaction.guild.id] = {
+            "url": url,
+            "title": title
+        }
         
         if interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.stop()
         
-        source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) # interaction으로 전달
+        source = await discord.FFmpegOpusAudio.from_probe(
+            url,
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
+        )
+
+        # 🔥 interaction 대신 guild 전달
+        interaction.guild.voice_client.play(
+            source,
+            after=lambda e: check_queue(interaction.guild)
+        )
+
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
         
     except Exception as e:
