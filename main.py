@@ -85,7 +85,7 @@ YDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
-    'cookiesfrombrowser': ('firefox',),
+    'cookiefile': 'cookies.txt',
 }
 
 # =====================
