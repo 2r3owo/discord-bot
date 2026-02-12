@@ -5,9 +5,9 @@ import yt_dlp
 import asyncio
 import os
 import json
+import psycopg2
 from collections import deque
 from datetime import datetime, timezone
-import psycopg2 
 
 DATABASE_URL = os.getenv('DATABASE_URL')
 
@@ -311,18 +311,20 @@ async def on_ready():
 # =====================
 @bot.tree.command(name="오늘의운세", description="하루에 한 번, 오늘의 행운을 확인하세요!")
 async def 오늘의운세(interaction: discord.Interaction):
-    # 1. 정보 가져오기 (서버 ID와 유저 ID 모두 사용)
-    g_id = interaction.guild.id
-    u_id = interaction.user.id
+    g_id = str(interaction.guild.id)  # ID를 문자열로 변환 (JSON 저장 시 안정성)
+    u_id = str(interaction.user.id)
     today = str(now_kst().date())
 
-    # 2. 중복 체크 (서버별 독립 데이터 사용)
-    # user_fortune_data에서 현재 서버(g_id)의 유저(u_id) 기록을 확인합니다.
-    last_date = get_user_data(user_fortune_data, g_id, u_id, None)
+    # 1. 서버 데이터가 아예 없는 경우를 대비해 미리 초기화
+    if g_id not in user_fortune_data:
+        user_fortune_data[g_id] = {}
+
+    # 2. 중복 체크 (get_user_data 대신 직접 접근하여 확실하게 체크)
+    last_date = user_fortune_data[g_id].get(u_id)
 
     if last_date == today:
         await interaction.response.send_message(
-            f"⚠️ {interaction.user.mention}님, 이 서버에서의 운세는 하루에 한 번만 볼 수 있어요! 다른 서버에서 시도해 보세요. 😉", 
+            f"⚠️ {interaction.user.mention}님, 이 서버에서의 운세는 이미 보셨어요! 내일 다시 와주세요. 😉", 
             ephemeral=True
         )
         return
@@ -356,10 +358,10 @@ async def 오늘의운세(interaction: discord.Interaction):
 
     selected = random.choice(fortune_results)
     
-    # 3. 데이터 저장 (현재 서버와 유저 조합으로 오늘 날짜 저장)
-    set_user_data(user_fortune_data, g_id, u_id, today)
+    # 3. 데이터 저장
+    user_fortune_data[g_id][u_id] = today
     
-    # 4. 임베드 생성 및 전송
+    # 4. 출력
     embed = discord.Embed(title="🔮 오늘의 운세", description=selected, color=0xffd700)
     embed.set_footer(text=f"{interaction.user.display_name}님의 하루를 응원합니다!")
     
