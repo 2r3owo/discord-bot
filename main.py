@@ -1364,6 +1364,16 @@ async def 이동(interaction: discord.Interaction, time: str):
     except Exception as e:
         await interaction.followup.send(f"❌ 이동 중 오류 발생: {e}")
 
+@bot.tree.command(name="반복", description="현재 재생 중인 곡을 반복하거나 해제합니다.")
+async def loop(interaction: discord.Interaction):
+    guild_id = interaction.guild_id
+    # 현재 상태 반전 (기본값 False)
+    current_status = loop_status.get(guild_id, False)
+    loop_status[guild_id] = not current_status
+    
+    status_text = "✅ **반복 재생 활성화**" if loop_status[guild_id] else "❌ **반복 재생 비활성화**"
+    await interaction.response.send_message(f"현재 반복 재생 상태: {status_text}")
+
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
 async def 야꺼져(interaction: discord.Interaction):
     if interaction.guild.voice_client:
