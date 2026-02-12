@@ -2,3 +2,5 @@ discord.py
 yt-dlp
 PyNaCl
 psycopg2-binary
+fastapi
+uvicorn
