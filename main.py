@@ -1,5 +1,6 @@
 import discord
-from discord.ext import commands, tasks
+from discord import app_commands
+from discord.ext import commands
 import random
 import yt_dlp
 import asyncio
@@ -1283,8 +1284,8 @@ async def 야재생해(interaction: discord.Interaction, search: str):
 
 # '야당겨봐' 명령어 (조금 더 안전하게 수정)
 @bot.tree.command(name="야당겨봐", description="현재 곡을 특정 시간으로 이동합니다. (예: 1:30, 100)")
-@app_commands.describe(time="이동할 시간 (예: 1:30 또는 초 단위 숫자)")
-async def 야당겨봐(interaction: discord.Interaction, time: str):
+@discord.app_commands.describe(time="이동할 시간 (예: 1:30 또는 초 단위 숫자)")
+async def 이동(interaction: discord.Interaction, time: str):
     # 1. 상태 체크
     vc = interaction.guild.voice_client
     if not vc or not vc.is_playing():
