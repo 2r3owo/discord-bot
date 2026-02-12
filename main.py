@@ -86,21 +86,36 @@ YDL_OPTIONS = {
 }
 
 # =====================
-# 보조 함수 (대기열 관리) - 수정됨
+# 보조 함수 (대기열 관리) - 최종 수정본
 # =====================
-def check_queue(ctx):
-    """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
-    if ctx.guild.id in queues and queues[ctx.guild.id]:
-        next_song = queues[ctx.guild.id].popleft()
-        
-        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
-        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
-        
-        bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
+async def check_queue(interaction: discord.Interaction):
+    guild_id = interaction.guild.id
+    voice_client = interaction.guild.voice_client
+
+    if guild_id in queues and queues[guild_id]:
+        next_song = queues[guild_id].popleft()
+
+        source = discord.FFmpegOpusAudio(
+            next_song['url'],
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
+        )
+
+        voice_client.play(
+            source,
+            after=lambda e: asyncio.run_coroutine_threadsafe(
+                check_queue(interaction),
+                bot.loop
+            )
+        )
+
+        await interaction.channel.send(
+            f"🎶 다음 곡 재생: **{next_song['title']}**"
+        )
+
     else:
-        if ctx.guild.id in queues:
-            del queues[ctx.guild.id]
+        if guild_id in queues:
+            del queues[guild_id]
 
 # =====================
 # 유틸리티 함수
@@ -1173,6 +1188,7 @@ async def 야재생해(interaction: discord.Interaction, search: str):
 
     try:
         queues[interaction.guild.id] = deque()
+
         
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
@@ -1191,6 +1207,7 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         
     except Exception as e:
         await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
+
 
 @bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
 async def 야기다려(interaction: discord.Interaction, search: str):
@@ -1235,11 +1252,17 @@ async def 야멈춰(interaction: discord.Interaction):
 
 @bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
 async def 야넘겨(interaction: discord.Interaction):
-    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
-        interaction.guild.voice_client.stop()
-        await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
-    else:
-        await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+    voice_client = interaction.guild.voice_client
+
+    if not voice_client or not voice_client.is_playing():
+        return await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+
+    voice_client.stop()
+
+    # 다음 곡 강제 실행
+    await check_queue(interaction)
+
+    await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
 
 @bot.tree.command(name="야목록", description="현재 노래 대기열을 확인합니다.")
 async def 야목록(interaction: discord.Interaction):
