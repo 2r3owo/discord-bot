@@ -1260,8 +1260,8 @@ async def on_ready():
 # 음성 및 노래 재생 관련 커맨드
 # ===================== 
 
-@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)") 
-async def 야재생해(interaction: discord.Interaction, search: str): 
+@bot.tree.command(name="야노래해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)") 
+async def 야노래해(interaction: discord.Interaction, search: str): 
     # 슬래시 커맨드 응답 지연 처리 (3초 이내 응답 필수 방지)
     await interaction.response.defer()
 
