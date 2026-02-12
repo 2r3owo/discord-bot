@@ -69,6 +69,9 @@ def set_user_data(data_dict, guild_id, user_id, value):
 # 노래 대기열 저장소 (서버별 관리)
 queues = {}
 
+# 서버별 반복 모드 저장
+loop_states = {}  # {guild_id: True/False}
+
 # YDL 및 FFMPEG 옵션
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -86,14 +89,19 @@ YDL_OPTIONS = {
 }
 
 # =====================
-# 보조 함수 (대기열 관리) - 최종 수정본
+# 보조 함수 (대기열 관리) - 반복 포함 수정본
 # =====================
 async def check_queue(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     voice_client = interaction.guild.voice_client
 
+    # 대기열에 곡이 있으면
     if guild_id in queues and queues[guild_id]:
         next_song = queues[guild_id].popleft()
+
+        # 🔁 반복 모드일 경우 다시 큐에 추가
+        if loop_states.get(guild_id):
+            queues[guild_id].append(next_song)
 
         source = discord.FFmpegOpusAudio(
             next_song['url'],
@@ -113,6 +121,7 @@ async def check_queue(interaction: discord.Interaction):
             f"🎶 다음 곡 재생: **{next_song['title']}**"
         )
 
+    # 대기열이 비어 있으면 정리
     else:
         if guild_id in queues:
             del queues[guild_id]
@@ -1175,8 +1184,8 @@ async def 야꺼져(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
 
-@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
-async def 야재생해(interaction: discord.Interaction, search: str):
+@bot.tree.command(name="야노래해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
+async def 야노래해(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
@@ -1207,6 +1216,18 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         
     except Exception as e:
         await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
+
+@bot.tree.command(name="반복", description="현재 곡 반복 재생 ON/OFF")
+async def 반복(interaction: discord.Interaction):
+    guild_id = interaction.guild.id
+    
+    current = loop_states.get(guild_id, False)
+    loop_states[guild_id] = not current
+
+    if loop_states[guild_id]:
+        await interaction.response.send_message("🔁 반복 재생이 **켜졌습니다!**")
+    else:
+        await interaction.response.send_message("⏹️ 반복 재생이 **꺼졌습니다!**")
 
 
 @bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
