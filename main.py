@@ -1262,47 +1262,61 @@ async def on_ready():
 
 @bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)") 
 async def 야재생해(interaction: discord.Interaction, search: str): 
-    # 슬래시 커맨드는 응답 시간이 짧으므로 미리 생각 중임을 알립니다.
+    # 슬래시 커맨드 응답 지연 처리 (3초 이내 응답 필수 방지)
     await interaction.response.defer()
 
-    # 1. 유저가 음성 채널에 있는지 확인
+    # 1. 유저 음성 채널 접속 여부 확인
     if not interaction.user.voice:
         return await interaction.followup.send("❌ 먼저 음성 채널에 접속해 주세요!")
 
-    # 2. 봇이 음성 채널에 접속 중인지 확인 및 접속
-    if not interaction.guild.voice_client:
-        await interaction.user.voice.channel.connect()
+    # 2. 봇 접속 로직 및 보이스 클라이언트 설정
+    vc = interaction.guild.voice_client
+    if not vc:
+        vc = await interaction.user.voice.channel.connect()
     
     try: 
-        # 대기열 초기화
+        # 대기열 및 정보 저장소 초기화 (기존 대기열 싹 비우기)
         queues[interaction.guild.id] = deque() 
         
-        # yt_dlp 옵션 (기존 코드에 정의된 ytdl 변수를 사용한다고 가정)
+        # 유튜브 정보 추출
         loop = asyncio.get_event_loop()
+        # ytdl 객체가 main.py 상단에 선언되어 있어야 합니다.
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(f"ytsearch:{search}", download=False))
         
         if 'entries' not in data or not data['entries']:
-            return await interaction.followup.send("❌ 검색 결과가 없습니다.")
+            return await interaction.followup.send(f"❌ '{search}'에 대한 검색 결과가 없습니다.")
             
         info = data['entries'][0]
         
-        # [중요] 현재 곡 정보를 저장 (야당겨봐, 야계속해 연동용)
-        current_song_info[interaction.guild.id] = {'url': info['url'], 'title': info['title']}
+        # 현재 곡 정보 업데이트 (연동 기능용)
+        current_song_info[interaction.guild.id] = {
+            'url': info['url'], 
+            'title': info['title']
+        }
 
-        # 이미 재생 중이라면 중지 (stop을 하면 보통 after 콜백이 실행되니 주의 필요)
-        if interaction.guild.voice_client.is_playing(): 
-            interaction.guild.voice_client.stop() 
+        # 3. 재생 중이면 중지 후 즉시 새 곡 재생
+        if vc.is_playing() or vc.is_paused():
+            vc.stop() 
          
-        # 오디오 소스 생성 및 재생
-        source = await discord.FFmpegOpusAudio.from_probe(info['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
-        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) 
+        # 오디오 소스 생성 (FFMPEG_OPTIONS가 상단에 선언되어 있어야 함)
+        source = await discord.FFmpegOpusAudio.from_probe(
+            info['url'], 
+            executable="ffmpeg", 
+            **FFMPEG_OPTIONS
+        ) 
         
-        await interaction.followup.send(f"🎶 즉시 재생 시작: **{info['title']}**") 
+        # 재생 시작
+        vc.play(source, after=lambda e: check_queue(interaction)) 
+        
+        await interaction.followup.send(f"🎶 즉시 재생을 시작합니다: **{info['title']}**") 
 
     except Exception as e: 
-        # 로그에도 에러 출력
-        print(f"Error in 야재생해: {e}")
-        await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
+        print(f"재생 오류 발생: {e}")
+        # followup.send가 실패할 경우를 대비해 예외 처리
+        try:
+            await interaction.followup.send(f"❌ 오류가 발생했습니다: {e}")
+        except:
+            pass
 
 # '야당겨봐' 명령어 (조금 더 안전하게 수정)
 @bot.tree.command(name="야당겨봐", description="현재 곡을 특정 시간으로 이동합니다. (예: 1:30, 100)")
