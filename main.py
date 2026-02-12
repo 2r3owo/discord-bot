@@ -24,7 +24,7 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents) 
 
-DATABASE_URL = os.getenv('DATABASE_URL') 
+DATABASE_URL = os.getenv('postgresql://postgres:KmtWoLJhdLbyDbqwlNJmQWjGCJLzpGxs@postgres.railway.internal:5432/railway') 
 
 def get_db_connection(): 
     return psycopg2.connect(DATABASE_URL, sslmode='require') 
