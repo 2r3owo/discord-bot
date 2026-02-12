@@ -9,6 +9,18 @@ import psycopg2
 from collections import deque
 from datetime import datetime, timezone
 
+# =====================
+# 설정 부분
+# =====================
+TOKEN = os.getenv('DISCORD_TOKEN') 
+CHANNEL_ID = None
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.voice_states = True
+
+bot = commands.Bot(command_prefix="!", intents=intents)
+
 DATABASE_URL = os.getenv('DATABASE_URL')
 
 def get_db_connection():
@@ -108,18 +120,6 @@ def get_chosung(text):
 # 한국 시간(KST) 설정 함수
 def now_kst():
     return datetime.now(timezone(timedelta(hours=9)))
-
-# =====================
-# 설정 부분
-# =====================
-TOKEN = os.getenv('DISCORD_TOKEN') 
-CHANNEL_ID = None
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.voice_states = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
 
 # =====================
 # 데이터 저장 및 관리 (서버별 독립 구조)
