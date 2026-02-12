@@ -15,7 +15,7 @@ from datetime import datetime, timezone, timedelta
 # ===================== 
 # 설정 부분 
 # ===================== 
-TOKEN = '여기에_디스코드_개발자_포털에서_받은_토큰'
+TOKEN = os.getenv('DISCORD_TOKEN')  
 CHANNEL_ID = None 
 
 intents = discord.Intents.default() 
@@ -24,7 +24,7 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents) 
 
-DATABASE_URL = os.getenv('postgresql://postgres:KmtWoLJhdLbyDbqwlNJmQWjGCJLzpGxs@postgres.railway.internal:5432/railway') 
+DATABASE_URL = os.getenv('DATABASE_URL') 
 
 def get_db_connection(): 
     return psycopg2.connect(DATABASE_URL, sslmode='require') 
