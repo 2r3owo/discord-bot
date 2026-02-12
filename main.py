@@ -1,328 +1,317 @@
-import discord
-from discord import app_commands
-from discord.ext import commands
-from discord.ext import tasks
-import random
-import yt_dlp
-import asyncio
-import os
-import json
-import psycopg2
-from collections import deque
-from datetime import datetime, timezone
+import discord 
+from discord import app_commands 
+from discord.ext import commands 
+from discord.ext import tasks 
+import random 
+import yt_dlp 
+import asyncio 
+import os 
+import json 
+import psycopg2 
+from collections import deque 
+# [수정] 여기에 timedelta만 딱 추가했어. 이거 없으면 시간 함수 다 터져.
+from datetime import datetime, timezone, timedelta 
 
-# =====================
-# 설정 부분
-# =====================
-TOKEN = os.getenv('DISCORD_TOKEN') 
-CHANNEL_ID = None
+# ===================== 
+# 설정 부분 
+# ===================== 
+TOKEN = os.getenv('DISCORD_TOKEN')  
+CHANNEL_ID = None 
 
-intents = discord.Intents.default()
-intents.message_content = True
-intents.voice_states = True
+intents = discord.Intents.default() 
+intents.message_content = True 
+intents.voice_states = True 
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents) 
 
-DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASE_URL = os.getenv('DATABASE_URL') 
 
-def get_db_connection():
-    return psycopg2.connect(DATABASE_URL, sslmode='require')
+def get_db_connection(): 
+    return psycopg2.connect(DATABASE_URL, sslmode='require') 
 
-# 서버가 켜질 때 테이블 구조를 잡는 함수
-def init_db():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # lotto_count와 fish_inventory를 TEXT로 생성해야 날짜나 딕셔너리 저장이 가능합니다.
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS user_data (
-            guild_id BIGINT,
-            user_id BIGINT,
-            money BIGINT DEFAULT 0,
-            daily_pay TEXT,
-            lotto_count TEXT DEFAULT '0',
-            fish_inventory TEXT DEFAULT '{}',
-            PRIMARY KEY (guild_id, user_id)
-        )
-    ''')
-    conn.commit()
-    cur.close()
-    conn.close()
+# 서버가 켜질 때 테이블 구조를 잡는 함수 
+def init_db(): 
+    conn = get_db_connection() 
+    cur = conn.cursor() 
+    # lotto_count와 fish_inventory를 TEXT로 생성해야 날짜나 딕셔너리 저장이 가능합니다. 
+    cur.execute(''' 
+        CREATE TABLE IF NOT EXISTS user_data ( 
+            guild_id BIGINT, 
+            user_id BIGINT, 
+            money BIGINT DEFAULT 0, 
+            daily_pay TEXT, 
+            lotto_count TEXT DEFAULT '0', 
+            fish_inventory TEXT DEFAULT '{}', 
+            PRIMARY KEY (guild_id, user_id) 
+        ) 
+    ''') 
+    conn.commit() 
+    cur.close() 
+    conn.close() 
 
-# 모든 데이터를 한 번에 가져오는 함수
-def load_all_data(guild_id, user_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT money, daily_pay, lotto_count, fish_inventory FROM user_data WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    if row:
-        # DB에 저장된 JSON 글자를 다시 파이썬 딕셔너리로 변환
-        inv = json.loads(row[3]) if row[3] else {}
-        return row[0], row[1], row[2], inv
-    else:
-        return 0, None, '0', {}
+# 모든 데이터를 한 번에 가져오는 함수 
+def load_all_data(guild_id, user_id): 
+    conn = get_db_connection() 
+    cur = conn.cursor() 
+    # [수정] 아까 네가 준 코드에서 쿼리문이 중간에 잘려서 에러 났던 거 한 줄로 합쳤어.
+    cur.execute("SELECT money, daily_pay, lotto_count, fish_inventory FROM user_data WHERE guild_id = %s AND user_id = %s", (guild_id, user_id)) 
+    row = cur.fetchone() 
+    cur.close() 
+    conn.close() 
+    if row: 
+        # DB에 저장된 JSON 글자를 다시 파이썬 딕셔너리로 변환 
+        inv = json.loads(row[3]) if row[3] else {} 
+        return row[0], row[1], row[2], inv 
+    else: 
+        return 0, None, '0', {} 
 
-# 모든 데이터를 한 번에 저장하는 함수
-def save_all_data(guild_id, user_id, money, daily_pay, lotto_count, inventory):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    # 파이썬 딕셔너리를 JSON 글자로 변환하여 저장
-    inv_json = json.dumps(inventory, ensure_ascii=False)
-    cur.execute('''
-        INSERT INTO user_data (guild_id, user_id, money, daily_pay, lotto_count, fish_inventory) 
-        VALUES (%s, %s, %s, %s, %s, %s)
-        ON CONFLICT (guild_id, user_id) 
-        DO UPDATE SET money = EXCLUDED.money, 
-                      daily_pay = EXCLUDED.daily_pay, 
-                      lotto_count = EXCLUDED.lotto_count, 
-                      fish_inventory = EXCLUDED.fish_inventory
-    ''', (guild_id, user_id, money, daily_pay, lotto_count, inv_json))
-    conn.commit()
-    cur.close()
-    conn.close()
+# 모든 데이터를 한 번에 저장하는 함수 
+def save_all_data(guild_id, user_id, money, daily_pay, lotto_count, inventory): 
+    conn = get_db_connection() 
+    cur = conn.cursor() 
+    # 파이썬 딕셔너리를 JSON 글자로 변환하여 저장 
+    inv_json = json.dumps(inventory, ensure_ascii=False) 
+    cur.execute(''' 
+        INSERT INTO user_data (guild_id, user_id, money, daily_pay, lotto_count, fish_inventory)  
+        VALUES (%s, %s, %s, %s, %s, %s) 
+        ON CONFLICT (guild_id, user_id)  
+        DO UPDATE SET money = EXCLUDED.money,  
+                      daily_pay = EXCLUDED.daily_pay,  
+                      lotto_count = EXCLUDED.lotto_count,  
+                      fish_inventory = EXCLUDED.fish_inventory 
+    ''', (guild_id, user_id, money, daily_pay, lotto_count, inv_json)) 
+    conn.commit() 
+    cur.close() 
+    conn.close() 
 
-# DB에서 돈 가져오는 함수
-def load_money(guild_id, user_id):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT money FROM user_data WHERE guild_id = %s AND user_id = %s", (guild_id, user_id))
-    row = cur.fetchone()
-    cur.close()
-    conn.close()
-    return row[0] if row else 0  # 데이터 없으면 0원 반환
+# DB에서 돈 가져오는 함수 
+def load_money(guild_id, user_id): 
+    conn = get_db_connection() 
+    cur = conn.cursor() 
+    cur.execute("SELECT money FROM user_data WHERE guild_id = %s AND user_id = %s", (guild_id, user_id)) 
+    row = cur.fetchone() 
+    cur.close() 
+    conn.close() 
+    return row[0] if row else 0  # 데이터 없으면 0원 반환 
 
-# DB에 돈 저장/업데이트하는 함수
-def save_money(guild_id, user_id, amount):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute('''
-        INSERT INTO user_data (guild_id, user_id, money) 
-        VALUES (%s, %s, %s)
-        ON CONFLICT (guild_id, user_id) 
-        DO UPDATE SET money = EXCLUDED.money
-    ''', (guild_id, user_id, amount))
-    conn.commit()
-    cur.close()
-    conn.close()
+# DB에 돈 저장/업데이트하는 함수 
+def save_money(guild_id, user_id, amount): 
+    conn = get_db_connection() 
+    cur = conn.cursor() 
+    cur.execute(''' 
+        INSERT INTO user_data (guild_id, user_id, money)  
+        VALUES (%s, %s, %s) 
+        ON CONFLICT (guild_id, user_id)  
+        DO UPDATE SET money = EXCLUDED.money 
+    ''', (guild_id, user_id, amount)) 
+    conn.commit() 
+    cur.close() 
+    conn.close() 
 
-# 초성을 추출하는 함수
-def get_chosung(text):
-    CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ']
-    result = ""
-    for char in text:
-        if '가' <= char <= '힣':
-            char_code = ord(char) - ord('가')
-            chosung_index = char_code // 588
-            result += CHOSUNG_LIST[chosung_index]
-        else:
-            result += char
-    return result
+# 초성을 추출하는 함수 
+def get_chosung(text): 
+    CHOSUNG_LIST = ['ㄱ', 'ㄲ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅅ', 'ㅆ', 'ㅇ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅋ', 'ㅌ', 'ㅍ', 'ㅎ'] 
+    result = "" 
+    for char in text: 
+        if '가' <= char <= '힣': 
+            char_code = ord(char) - ord('가') 
+            chosung_index = char_code // 588 
+            result += CHOSUNG_LIST[chosung_index] 
+        else: 
+            result += char 
+    return result 
 
-# 한국 시간(KST) 설정 함수
-def now_kst():
-    return datetime.now(timezone(timedelta(hours=9)))
+# [수정] 중복 정의된 now_kst 중에서 에러 없는 버전 딱 하나만 남겼어.
+def now_kst(): 
+    return datetime.now(timezone(timedelta(hours=9))) 
 
-# =====================
-# 데이터 저장 및 관리 (서버별 독립 구조)
-# =====================
-# 구조: {str(guild_id): {str(user_id): value}}
-user_money = {}
-user_daily_pay = {}
-user_lotto_count = {}
-user_inventory = {}
-user_fortune_data = {}
-user_match_data = {}
-active_games = {}  # 퀴즈 중단 방지용
+# ===================== 
+# 데이터 저장 및 관리 (서버별 독립 구조) 
+# ===================== 
+user_money = {} 
+user_daily_pay = {} 
+user_lotto_count = {} 
+user_inventory = {} 
+user_fortune_data = {} 
+user_match_data = {} 
+active_games = {}  # 퀴즈 중단 방지용 
 
-# [서버별 데이터를 안전하게 가져오기 위한 함수]
-def get_user_data(data_dict, guild_id, user_id, default_value):
-    g_id = str(guild_id)
-    u_id = str(user_id)
-    if g_id not in data_dict:
-        data_dict[g_id] = {}
-    if u_id not in data_dict[g_id]:
-        data_dict[g_id][u_id] = default_value
-    return data_dict[g_id][u_id]
+# [서버별 데이터를 안전하게 가져오기 위한 함수] 
+def get_user_data(data_dict, guild_id, user_id, default_value): 
+    g_id = str(guild_id) 
+    u_id = str(user_id) 
+    if g_id not in data_dict: 
+        data_dict[g_id] = {} 
+    if u_id not in data_dict[g_id]: 
+        data_dict[g_id][u_id] = default_value 
+    return data_dict[g_id][u_id] 
 
-# [서버별 데이터를 저장하기 위한 함수]
-def set_user_data(data_dict, guild_id, user_id, value):
-    g_id = str(guild_id)
-    u_id = str(user_id)
-    if g_id not in data_dict:
-        data_dict[g_id] = {}
-    data_dict[g_id][u_id] = value
+# [서버별 데이터를 저장하기 위한 함수] 
+def set_user_data(data_dict, guild_id, user_id, value): 
+    g_id = str(guild_id) 
+    u_id = str(user_id) 
+    if g_id not in data_dict: 
+        data_dict[g_id] = {} 
+    data_dict[g_id][u_id] = value 
 
-# 노래 대기열 저장소 (서버별 관리)
-queues = {}
-repeat_status = {}      # 추가: 서버별 반복 재생 상태 {guild_id: bool}
-current_song_info = {}  # 추가: 서버별 현재 재생 곡 정보 {guild_id: {'url': url, 'title': title}}
+# 노래 대기열 저장소 (서버별 관리) 
+queues = {} 
+repeat_status = {}      # 추가: 서버별 반복 재생 상태 {guild_id: bool} 
+current_song_info = {}  # 추가: 서버별 현재 재생 곡 정보 {guild_id: {'url': url, 'title': title}} 
 
-# YDL 및 FFMPEG 옵션
-FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn', # 비디오는 빼고 오디오만!
-}
+# YDL 및 FFMPEG 옵션 
+FFMPEG_OPTIONS = { 
+    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5', 
+    'options': '-vn', # 비디오는 빼고 오디오만! 
+} 
 
-YDL_OPTIONS = {
-    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
-    'noplaylist': True,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'nocheckcertificate': True,
-    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
-}
+YDL_OPTIONS = { 
+    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정 
+    'noplaylist': True, 
+    'quiet': True, 
+    'no_warnings': True, 
+    'default_search': 'auto', 
+    'nocheckcertificate': True, 
+    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키! 
+} 
 
-# =====================
-# 보조 함수 (대기열 및 반복 재생 관리) - 수정됨
-# =====================
-def check_queue(interaction):
-    """노래 재생이 끝나면 호출되어 다음 곡이나 반복 곡을 재생합니다."""
-    guild_id = interaction.guild.id
-    voice_client = interaction.guild.voice_client
+# ===================== 
+# 보조 함수 (대기열 및 반복 재생 관리) - 수정됨 
+# ===================== 
+def check_queue(interaction): 
+    """노래 재생이 끝나면 호출되어 다음 곡이나 반복 곡을 재생합니다.""" 
+    guild_id = interaction.guild.id 
+    voice_client = interaction.guild.voice_client 
 
-    if not voice_client:
-        return
+    if not voice_client: 
+        return 
 
-    # 1. 한 곡 반복 재생이 켜져 있는 경우 (최우선 순위)
-    if repeat_status.get(guild_id, False) and guild_id in current_song_info:
-        song = current_song_info[guild_id]
-        # Railway 환경용 executable="ffmpeg" 포함
-        source = discord.FFmpegOpusAudio.from_probe(song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        voice_client.play(source, after=lambda e: check_queue(interaction))
-        return
+    # 1. 한 곡 반복 재생이 켜져 있는 경우 (최우선 순위) 
+    if repeat_status.get(guild_id, False) and guild_id in current_song_info: 
+        song = current_song_info[guild_id] 
+        # Railway 환경용 executable="ffmpeg" 포함 
+        source = discord.FFmpegOpusAudio.from_probe(song['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
+        voice_client.play(source, after=lambda e: check_queue(interaction)) 
+        return 
 
-    # 2. 다음 대기열 곡 재생
-    if guild_id in queues and queues[guild_id]:
-        next_song = queues[guild_id].popleft()
-        current_song_info[guild_id] = next_song  # 현재 곡 정보 업데이트
-        
-        source = discord.FFmpegOpusAudio.from_probe(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        voice_client.play(source, after=lambda e: check_queue(interaction))
-        
-        # 슬래시 커맨드 대응을 위해 follow-up 혹은 일반 전송 사용 (interaction 객체 사용)
-        bot.loop.create_task(interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
-    else:
-        # 대기열이 비었으면 현재 곡 정보와 반복 설정 초기화
-        if guild_id in current_song_info:
-            del current_song_info[guild_id]
+    # 2. 다음 대기열 곡 재생 
+    if guild_id in queues and queues[guild_id]: 
+        next_song = queues[guild_id].popleft() 
+        current_song_info[guild_id] = next_song  # 현재 곡 정보 업데이트 
+         
+        source = discord.FFmpegOpusAudio.from_probe(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS) 
+        voice_client.play(source, after=lambda e: check_queue(interaction)) 
+         
+        # 슬래시 커맨드 대응을 위해 follow-up 혹은 일반 전송 사용 (interaction 객체 사용) 
+        bot.loop.create_task(interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**")) 
+    else: 
+        # 대기열이 비었으면 현재 곡 정보와 반복 설정 초기화 
+        if guild_id in current_song_info: 
+            del current_song_info[guild_id] 
 
-# =====================
-# 유틸리티 함수
-# =====================
-def now_kst():
-    # 한국 시간(UTC+9) 계산
-    return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
-
-# =====================
-# KST 시간 함수
-# =====================
-def now_kst():
-    return datetime.now(timezone(timedelta(hours=9)))
+# ===================== 
+# 자동 인사 스케줄러 
+# ===================== 
+last_sent = { 
+    "morning": None, 
+    "lunch": None, 
+    "dinner": None, 
+    "test_14": None, 
+} 
 
 
-# =====================
-# 자동 인사 스케줄러
-# =====================
-last_sent = {
-    "morning": None,
-    "lunch": None,
-    "dinner": None,
-    "test_14": None,
-}
+async def send_to_all_guilds(message): 
+    for guild in bot.guilds: 
+
+        # 1️⃣ system_channel 우선 
+        channel = guild.system_channel 
+        if channel and channel.permissions_for(guild.me).send_messages: 
+            await channel.send(message) 
+            continue 
+
+        # 2️⃣ 없으면 첫 번째 전송 가능한 채널 
+        for ch in guild.text_channels: 
+            if ch.permissions_for(guild.me).send_messages: 
+                await ch.send(message) 
+                break 
 
 
-async def send_to_all_guilds(message):
-    for guild in bot.guilds:
+async def send_once(key, hour, minute, message): 
+    now = now_kst() 
 
-        # 1️⃣ system_channel 우선
-        channel = guild.system_channel
-        if channel and channel.permissions_for(guild.me).send_messages:
-            await channel.send(message)
-            continue
+    # 정각 + 1분 허용 
+    if now.hour == hour and 0 <= now.minute - minute < 2: 
+        if last_sent.get(key) == now.date(): 
+            return 
 
-        # 2️⃣ 없으면 첫 번째 전송 가능한 채널
-        for ch in guild.text_channels:
-            if ch.permissions_for(guild.me).send_messages:
-                await ch.send(message)
-                break
-
-
-async def send_once(key, hour, minute, message):
-    now = now_kst()
-
-    # 정각 + 1분 허용
-    if now.hour == hour and 0 <= now.minute - minute < 2:
-        if last_sent.get(key) == now.date():
-            return
-
-        try:
-            await send_to_all_guilds(message)
-            last_sent[key] = now.date()
-            print(f"✅ {key} 인사 전송 완료")
-        except Exception as e:
-            print(f"❌ {key} 인사 전송 실패:", e)
+        try: 
+            await send_to_all_guilds(message) 
+            last_sent[key] = now.date() 
+            print(f"✅ {key} 인사 전송 완료") 
+        except Exception as e: 
+            print(f"❌ {key} 인사 전송 실패:", e) 
 
 
-@tasks.loop(minutes=1)
-async def morning():
-    await send_once(
-        "morning",
-        6,
-        0,
-        "@everyone 기상! 기상! 햇살이 똑똑똑~ 오늘 하루도 힘내보자구요!! ☀️"
-    )
+@tasks.loop(minutes=1) 
+async def morning(): 
+    await send_once( 
+        "morning", 
+        6, 
+        0, 
+        "@everyone 기상! 기상! 햇살이 똑똑똑~ 오늘 하루도 힘내보자구요!! ☀️" 
+    ) 
 
-@tasks.loop(minutes=1)
-async def lunch():
-    await send_once(
-        "lunch",
-        12,
-        0,
-        "@everyone 🍚 점심시간! 맛있게 드세요!"
-    )
+@tasks.loop(minutes=1) 
+async def lunch(): 
+    await send_once( 
+        "lunch", 
+        12, 
+        0, 
+        "@everyone 🍚 점심시간! 맛있게 드세요!" 
+    ) 
 
-@tasks.loop(minutes=1)
-async def dinner():
-    await send_once(
-        "dinner",
-        19,
-        0,
-        "@everyone 🛌 오늘도 고생했어요! 저녁 챙겨드세요!"
-    )
+@tasks.loop(minutes=1) 
+async def dinner(): 
+    await send_once( 
+        "dinner", 
+        19, 
+        0, 
+        "@everyone 🛌 오늘도 고생했어요! 저녁 챙겨드세요!" 
+    ) 
 
-# =====================
-# 🧪 테스트용 인사 (14:00)
-# =====================
-@tasks.loop(minutes=1)
-async def test_greeting():
-    await send_once(
-        "test_14",
-        14,
-        0,
-        "@everyone 🧪 하루의 반이 지났습니다. 모두들 졸지 말고, 그냥 잠을 자버리세요!!! 파이팅!!!!🔥"
-    )
+# ===================== 
+# 🧪 테스트용 인사 (14:00) 
+# ===================== 
+@tasks.loop(minutes=1) 
+async def test_greeting(): 
+    await send_once( 
+        "test_14", 
+        14, 
+        0, 
+        "@everyone 삐용삐용!!!!🚨 일어나세요 일어나세요!!! 두시입니다!!!!! 모두 일어나세요!!!!!" 
+    ) 
 
 
-# =====================
-# 봇 준비 완료 시 루프 시작
-# =====================
-@bot.event
-async def on_ready():
-    print(f"✅ 봇 로그인 완료: {bot.user}")
-    
-    # 슬래시 커맨드 동기화
-    try:
-        synced = await bot.tree.sync()
-        print(f"동기화된 명령어 개수: {len(synced)}개")
-    except Exception as e:
-        print(f"동기화 중 오류 발생: {e}")
+# ===================== 
+# 봇 준비 완료 시 루프 시작 
+# ===================== 
+@bot.event 
+async def on_ready(): 
+    # [추가] DB 테이블 없으면 에러 나니까 켜질 때 초기화해주는 게 좋아.
+    init_db()
+    print(f"✅ 봇 로그인 완료: {bot.user}") 
+     
+    # 슬래시 커맨드 동기화 
+    try: 
+        synced = await bot.tree.sync() 
+        print(f"동기화된 명령어 개수: {len(synced)}개") 
+    except Exception as e: 
+        print(f"동기화 중 오류 발생: {e}") 
 
-    # 루프 시작 (중복 방지 체크 포함)
-    loops = [morning, lunch, dinner, test_greeting]
-    for task in loops:
-        if not task.is_running():
+    # 루프 시작 (중복 방지 체크 포함) 
+    loops = [morning, lunch, dinner, test_greeting] 
+    for task in loops: 
+        if not task.is_running(): 
             task.start()
 
 # =====================
@@ -474,50 +463,58 @@ async def 궁합(interaction: discord.Interaction, user: discord.Member): # 1. c
     await interaction.response.send_message(embed=embed)
 
 # =====================
-# 경제 시스템: 돈내놔 (수정 완료 버전)
+# 경제 시스템: 돈내놔 (최종 수리 완료)
 # =====================
 @bot.tree.command(name="돈내놔", description="이 서버에서 하루 3번, 10,000원씩 지원금을 받습니다.")
 async def 돈내놔(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
-    today = str(now_kst().date())
+    
+    # 1. 현재 시간 (KST) 가져오기
+    # 주의: now_kst() 함수가 코드 위쪽에 정의되어 있어야 합니다.
+    now = now_kst()
+    today = str(now.date())
 
-    # 1. DB에서 현재 돈, 마지막 지급 정보, 로또 횟수를 가져옵니다.
+    # 2. DB에서 데이터 로드
+    # 반환값이 (money, daily_pay, lotto_count) 순서인지 확인하세요.
     money, daily_info_str, lotto = load_all_data(g_id, u_id)
 
-    # 2. 날짜와 횟수 분석 (형식: "2023-10-27|1")
+    # 3. 날짜와 횟수 분석 logic
+    # daily_info_str 예시: "2023-10-27|1"
     if daily_info_str and "|" in daily_info_str:
-        last_date, count = daily_info_str.split("|")
-        count = int(count)
+        try:
+            last_date, count_str = daily_info_str.split("|")
+            count = int(count_str)
+        except ValueError:
+            # 데이터 형식이 깨져있을 경우 초기화
+            last_date, count = today, 0
     else:
-        # 정보가 없거나 형식이 다르면 초기값 설정
         last_date, count = today, 0
 
-    # 3. 날짜가 바뀌었으면 횟수 초기화
+    # 4. 날짜가 바뀌었으면 횟수를 0으로 리셋
     if last_date != today:
-        last_date = today
         count = 0
 
-    # 4. 3회 미만인지 확인
+    # 5. 지급 판별
     if count < 3:
         new_money = money + 10000
         new_count = count + 1
-        new_daily_info = f"{today}|{new_count}" # 날짜와 횟수를 합쳐서 저장
+        new_daily_info = f"{today}|{new_count}"
         
-        # 5. DB에 한꺼번에 저장 (함수 정의에 따라 인자 순서 확인 필요)
+        # 6. DB에 저장 (중요: save_all_data의 인자 순서가 맞는지 꼭 확인!)
+        # 순서: guild_id, user_id, money, daily_pay, lotto_count
         save_all_data(g_id, u_id, new_money, new_daily_info, lotto)
         
         await interaction.response.send_message(
-            f"💰 {interaction.user.mention}님께 **이 서버 전용** 지원금 10,000원을 드렸습니다!\n"
-            f"📅 오늘 횟수: {new_count}/3회\n"
-            f"💵 현재 서버 잔고: {new_money:,}원"
+            f"💰 {interaction.user.mention}님께 지원금 **10,000원**을 드렸습니다!\n"
+            f"📅 오늘 횟수: `{new_count}/3`회\n"
+            f"💵 현재 잔고: `{new_money:,}`원"
         )
     else:
-        # 6. 수정 부분: status=True를 제거함
-        # 본인에게만 경고를 띄우고 싶다면 ephemeral=True를 사용하세요.
+        # 이미 3번 다 받은 경우 (본인에게만 보임)
         await interaction.response.send_message(
-            f"⚠️ {interaction.user.mention}님, 이 서버에서는 오늘 이미 3번 다 받으셨어요! 내일 다시 오세요.", 
-            ephemeral=True  # 이 옵션을 쓰면 본인에게만 메시지가 보입니다.
+            f"⚠️ {interaction.user.mention}님, 오늘은 이미 3번(최대) 다 받으셨습니다. 내일 다시 오세요!", 
+            ephemeral=True
         )
         
 # =====================
