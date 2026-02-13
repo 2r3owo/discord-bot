@@ -76,13 +76,10 @@ FFMPEG_OPTIONS = {
 }
 
 YDL_OPTIONS = {
-    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
-    'noplaylist': True,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'nocheckcertificate': True,
-    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
+    "format": "bestaudio",
+    "noplaylist": True,
+    "default_search": "ytsearch1",  # ✅ 이 줄 추가
+    "quiet": True
 }
 
 # =====================
@@ -536,24 +533,24 @@ async def 로또(interaction: discord.Interaction):
 
 # 1. 낚시 데이터 정의
 FISH_DATA = {
-    "👢낡은 장화👢": {"chance": 15, "price": 50, "is_trash": True},
-    "🧻뭉쳐진 휴지🧻": {"chance": 15, "price": 50, "is_trash": True},
-    "📄찢어진 신문지📄": {"chance": 15, "price": 50, "is_trash": True},
-    "🥫찌그러진 캔🥫": {"chance": 15, "price": 50, "is_trash": True},
-    "🐟피라미🐟": {"chance": 12, "price": 100},
-    "🐠붕어🐠": {"chance": 10, "price": 500},
-    "🦐새우🦐": {"chance": 8, "price": 800},
-    "⭐불가사리⭐": {"chance": 7, "price": 1200},
-    "🎏잉어🎏": {"chance": 6, "price": 2000},
-    "🦑오징어🦑": {"chance": 5, "price": 3000},
-    "🐡복어🐡": {"chance": 4, "price": 4500},
-    "🪼해파리🪼": {"chance": 4, "price": 4000},
-    "🐙문어🐙": {"chance": 3, "price": 7000},
-    "🐢거북이🐢": {"chance": 2, "price": 30000},
-    "🦞가재🦞": {"chance": 1, "price": 1000},
-    "🐚소라게🐚": {"chance": 0.5, "price": 2500},
-    "🦈상어🦈": {"chance": 0.3, "price": 15000},
-    "🐋고래🐋": {"chance": 0.2, "price": 20000}
+    "낡은 장화": {"chance": 15, "price": 0, "is_trash": True},
+    "뭉쳐진 휴지": {"chance": 15, "price": 0, "is_trash": True},
+    "찢어진 신문지": {"chance": 15, "price": 0, "is_trash": True},
+    "찌그러진 캔": {"chance": 15, "price": 0, "is_trash": True},
+    "피라미": {"chance": 12, "price": 100},
+    "붕어": {"chance": 10, "price": 500},
+    "새우": {"chance": 8, "price": 800},
+    "불가사리": {"chance": 7, "price": 1200},
+    "잉어": {"chance": 6, "price": 2000},
+    "오징어": {"chance": 5, "price": 3000},
+    "복어": {"chance": 4, "price": 4500},
+    "해파리": {"chance": 4, "price": 4000},
+    "문어": {"chance": 3, "price": 7000},
+    "거북이": {"chance": 2, "price": 10000},
+    "해마": {"chance": 1, "price": 5000},
+    "물범": {"chance": 0.5, "price": 30000},
+    "상어": {"chance": 0.3, "price": 15000},
+    "고래": {"chance": 0.2, "price": 20000}
 }
 
 @bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
@@ -1152,6 +1149,7 @@ async def 야드루와(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(f"❌ 접속 중 오류 발생: {e}", ephemeral=True)
 
+
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
 async def 야꺼져(interaction: discord.Interaction):
     if interaction.guild.voice_client:
@@ -1160,44 +1158,73 @@ async def 야꺼져(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
 
-@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
+
+# =====================
+# 즉시 재생 (대기열 초기화)
+# =====================
+
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.")
 async def 야재생해(interaction: discord.Interaction, search: str):
+
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-    # 슬래시 커맨드는 응답 시간이 짧으므로 미리 생각 중임을 표시
-    await interaction.response.defer()
+    await interaction.response.defer(thinking=True)
 
     if not interaction.guild.voice_client:
         await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
 
     try:
         queues[interaction.guild.id] = deque()
-        
+
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
-            if 'entries' in info: info = info['entries'][0]
-        
-        url = info['url']
-        title = info['title']
-        
-        if interaction.guild.voice_client.is_playing():
-            interaction.guild.voice_client.stop()
-        
-        source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) # interaction으로 전달
+            info = await loop.run_in_executor(
+                None,
+                lambda: ydl.extract_info(search, download=False)
+            )
+
+        # ✅ 검색 결과 체크
+        if not info:
+            await interaction.followup.send("❌ 정보를 불러오지 못했습니다.")
+            return
+
+        if "entries" in info:
+            if not info["entries"]:
+                await interaction.followup.send("❌ 검색 결과가 없습니다.")
+                return
+            info = info["entries"][0]
+
+        url = info["url"]
+        title = info["title"]
+
+        vc = interaction.guild.voice_client
+
+        if vc.is_playing():
+            vc.stop()
+
+        source = await discord.FFmpegOpusAudio.from_probe(
+            url, executable="ffmpeg", **FFMPEG_OPTIONS
+        )
+
+        vc.play(source, after=lambda e: check_queue(interaction.guild))
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
-        
+
     except Exception as e:
         await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
 
+
+# =====================
+# 대기열 추가
+# =====================
+
 @bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
 async def 야기다려(interaction: discord.Interaction, search: str):
+
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-    await interaction.response.defer()
+    await interaction.response.defer(thinking=True)
 
     if not interaction.guild.voice_client:
         await interaction.user.voice.channel.connect()
@@ -1205,25 +1232,47 @@ async def 야기다려(interaction: discord.Interaction, search: str):
     try:
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
-            if 'entries' in info: info = info['entries'][0]
+            info = await loop.run_in_executor(
+                None,
+                lambda: ydl.extract_info(search, download=False)
+            )
 
-        url = info['url']
-        title = info['title']
+        # ✅ 검색 결과 체크
+        if not info:
+            await interaction.followup.send("❌ 정보를 불러오지 못했습니다.")
+            return
+
+        if "entries" in info:
+            if not info["entries"]:
+                await interaction.followup.send("❌ 검색 결과가 없습니다.")
+                return
+            info = info["entries"][0]
+
+        url = info["url"]
+        title = info["title"]
 
         if interaction.guild.id not in queues:
             queues[interaction.guild.id] = deque()
 
-        if interaction.guild.voice_client.is_playing():
-            queues[interaction.guild.id].append({'url': url, 'title': title})
+        vc = interaction.guild.voice_client
+
+        if vc.is_playing():
+            queues[interaction.guild.id].append({"url": url, "title": title})
             await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
         else:
-            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-            interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+            source = await discord.FFmpegOpusAudio.from_probe(
+                url, executable="ffmpeg", **FFMPEG_OPTIONS
+            )
+            vc.play(source, after=lambda e: check_queue(interaction.guild))
             await interaction.followup.send(f"🎶 재생 시작: **{title}**")
 
     except Exception as e:
         await interaction.followup.send(f"❌ 대기열 추가 중 오류 발생: {e}")
+
+
+# =====================
+# 멈춤
+# =====================
 
 @bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
 async def 야멈춰(interaction: discord.Interaction):
@@ -1233,13 +1282,23 @@ async def 야멈춰(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 재생 중인 노래가 없어요.", ephemeral=True)
 
-@bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
+
+# =====================
+# 스킵
+# =====================
+
+@bot.tree.command(name="야넘겨", description="현재 노래를 건너뜁니다.")
 async def 야넘겨(interaction: discord.Interaction):
     if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
         interaction.guild.voice_client.stop()
         await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
     else:
         await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+
+
+# =====================
+# 대기열 목록
+# =====================
 
 @bot.tree.command(name="야목록", description="현재 노래 대기열을 확인합니다.")
 async def 야목록(interaction: discord.Interaction):
