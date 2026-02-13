@@ -76,10 +76,13 @@ FFMPEG_OPTIONS = {
 }
 
 YDL_OPTIONS = {
-    "format": "bestaudio",
-    "noplaylist": True,
-    "default_search": "ytsearch1",  # ✅ 이 줄 추가
-    "quiet": True
+    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
+    'noplaylist': True,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'nocheckcertificate': True,
+    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
 }
 
 # =====================
@@ -1149,7 +1152,6 @@ async def 야드루와(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(f"❌ 접속 중 오류 발생: {e}", ephemeral=True)
 
-
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
 async def 야꺼져(interaction: discord.Interaction):
     if interaction.guild.voice_client:
@@ -1158,138 +1160,96 @@ async def 야꺼져(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
 
-# =====================
-# 음악 컨트롤러 UI (버튼)
-# =====================
-
-# 서버별로 반복 재생 상태를 저장 (전역 변수 위치에 놓아주세요)
-if 'repeat_status' not in globals():
-    repeat_status = {}
-
-class MusicControlView(discord.ui.View):
-    def __init__(self, guild_id):
-        super().__init__(timeout=None)
-        self.guild_id = guild_id
-
-    @discord.ui.button(label="⏯️ 재생/일시정지", style=discord.ButtonStyle.blurple)
-    async def play_pause(self, interaction: discord.Interaction, button: discord.ui.Button):
-        vc = interaction.guild.voice_client
-        if not vc: return
-        
-        if vc.is_playing():
-            vc.pause()
-            await interaction.response.send_message("⏸️ 노래를 일시정지했습니다.", ephemeral=True)
-        elif vc.is_paused():
-            vc.resume()
-            await interaction.response.send_message("▶️ 노래를 다시 재생합니다.", ephemeral=True)
-
-    @discord.ui.button(label="⏭️ 다음곡", style=discord.ButtonStyle.secondary)
-    async def skip(self, interaction: discord.Interaction, button: discord.ui.Button):
-        vc = interaction.guild.voice_client
-        if vc and (vc.is_playing() or vc.is_paused()):
-            vc.stop() # stop을 하면 after 로직에 의해 check_queue가 실행됩니다.
-            await interaction.response.send_message("⏭️ 다음 곡으로 넘어갑니다.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ 현재 재생 중인 노래가 없습니다.", ephemeral=True)
-
-    @discord.ui.button(label="🔁 반복", style=discord.ButtonStyle.success)
-    async def repeat(self, interaction: discord.Interaction, button: discord.ui.Button):
-        current = repeat_status.get(self.guild_id, False)
-        repeat_status[self.guild_id] = not current
-        status = "켜짐" if repeat_status[self.guild_id] else "꺼짐"
-        
-        button.style = discord.ButtonStyle.success if repeat_status[self.guild_id] else discord.ButtonStyle.gray
-        await interaction.response.edit_message(view=self)
-        await interaction.followup.send(f"🔁 반복 재생이 **{status}** 상태가 되었습니다.", ephemeral=True)
-
-    @discord.ui.button(label="⏹️ 중지", style=discord.ButtonStyle.danger)
-    async def stop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        vc = interaction.guild.voice_client
-        if vc:
-            if self.guild_id in queues:
-                queues[self.guild_id].clear()
-            await vc.disconnect()
-            await interaction.response.send_message("⏹️ 음악을 종료하고 퇴장합니다.")
-
-def check_queue(guild):
-    if guild.id in queues and queues[guild.id]:
-        song = queues[guild.id].popleft()
-        
-        # 반복 재생이 켜져 있으면 사용한 곡을 다시 맨 뒤에 넣음
-        if repeat_status.get(guild.id, False):
-            queues[guild.id].append(song)
-
-        source = discord.FFmpegOpusAudio(song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        
-        def after_playing(error):
-            if error: print(f"Error: {error}")
-            # 루프를 돌리기 위해 다시 check_queue 호출
-            bot.loop.call_soon_threadsafe(lambda: check_queue(guild))
-
-        guild.voice_client.play(source, after=after_playing)
-    else:
-        # 대기열이 비었을 때 처리 (필요시 알림 추가 가능)
-        pass
-
-# =====================
-# 즉시 재생 (수정본)
-# =====================
-
-@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.")
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
 async def 야재생해(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-    await interaction.response.defer(thinking=True)
+    # 슬래시 커맨드는 응답 시간이 짧으므로 미리 생각 중임을 표시
+    await interaction.response.defer()
 
     if not interaction.guild.voice_client:
         await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
 
     try:
-        # 즉시 재생이므로 기존 대기열 초기화
         queues[interaction.guild.id] = deque()
-
+        
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = await loop.run_in_executor(None, lambda: ydl.extract_info(search, download=False))
-
-        if not info:
-            return await interaction.followup.send("❌ 정보를 불러오지 못했습니다.")
-
-        if "entries" in info:
-            info = info["entries"][0]
-
-        data = {
-            "url": info["url"],
-            "title": info["title"],
-            "thumbnail": info.get("thumbnail")
-        }
-
-        vc = interaction.guild.voice_client
-        if vc.is_playing() or vc.is_paused():
-            vc.stop() # stop이 실행되면 after가 호출되므로 주의 필요
-
-        source = await discord.FFmpegOpusAudio.from_probe(data["url"], executable="ffmpeg", **FFMPEG_OPTIONS)
+            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
+            if 'entries' in info: info = info['entries'][0]
         
-        # 핵심: after에 람다를 넣어 다음 곡으로 연결
-        vc.play(source, after=lambda e: check_queue(interaction.guild))
+        url = info['url']
+        title = info['title']
         
-        # 예쁜 임베드 구성
-        embed = discord.Embed(
-            title="🎵 즉시 재생 시작",
-            description=f"**[{data['title']}]**",
-            color=0x5865F2
-        )
-        if data["thumbnail"]:
-            embed.set_thumbnail(url=data["thumbnail"])
-        embed.set_footer(text=f"요청자: {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
-
-        # 컨트롤 버튼 뷰 생성
-        view = MusicControlView(interaction.guild.id)
-        await interaction.followup.send(embed=embed, view=view)
-
+        if interaction.guild.voice_client.is_playing():
+            interaction.guild.voice_client.stop()
+        
+        source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) # interaction으로 전달
+        await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
+        
     except Exception as e:
         await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
+
+@bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
+async def 야기다려(interaction: discord.Interaction, search: str):
+    if not interaction.user.voice:
+        return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
+
+    await interaction.response.defer()
+
+    if not interaction.guild.voice_client:
+        await interaction.user.voice.channel.connect()
+
+    try:
+        loop = asyncio.get_event_loop()
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = await loop.run_in_executor(None, lambda: ydl.extract_info(f"ytsearch:{search}" if not search.startswith("https://") else search, download=False))
+            if 'entries' in info: info = info['entries'][0]
+
+        url = info['url']
+        title = info['title']
+
+        if interaction.guild.id not in queues:
+            queues[interaction.guild.id] = deque()
+
+        if interaction.guild.voice_client.is_playing():
+            queues[interaction.guild.id].append({'url': url, 'title': title})
+            await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
+        else:
+            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+            interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+            await interaction.followup.send(f"🎶 재생 시작: **{title}**")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ 대기열 추가 중 오류 발생: {e}")
+
+@bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
+async def 야멈춰(interaction: discord.Interaction):
+    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        interaction.guild.voice_client.stop()
+        await interaction.response.send_message("⏹️ 재생을 중지했습니다.")
+    else:
+        await interaction.response.send_message("❌ 재생 중인 노래가 없어요.", ephemeral=True)
+
+@bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
+async def 야넘겨(interaction: discord.Interaction):
+    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        interaction.guild.voice_client.stop()
+        await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
+    else:
+        await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+
+@bot.tree.command(name="야목록", description="현재 노래 대기열을 확인합니다.")
+async def 야목록(interaction: discord.Interaction):
+    if interaction.guild.id in queues and queues[interaction.guild.id]:
+        msg = "📋 **현재 대기열 목록:**\n"
+        for i, song in enumerate(queues[interaction.guild.id], 1):
+            msg += f"{i}. {song['title']}\n"
+        await interaction.response.send_message(msg)
+    else:
+        await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
 
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
