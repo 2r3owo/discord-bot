@@ -536,24 +536,24 @@ async def 로또(interaction: discord.Interaction):
 
 # 1. 낚시 데이터 정의
 FISH_DATA = {
-    "낡은 장화": {"chance": 15, "price": 0, "is_trash": True},
-    "뭉쳐진 휴지": {"chance": 15, "price": 0, "is_trash": True},
-    "찢어진 신문지": {"chance": 15, "price": 0, "is_trash": True},
-    "찌그러진 캔": {"chance": 15, "price": 0, "is_trash": True},
-    "피라미": {"chance": 12, "price": 100},
-    "붕어": {"chance": 10, "price": 500},
-    "새우": {"chance": 8, "price": 800},
-    "불가사리": {"chance": 7, "price": 1200},
-    "잉어": {"chance": 6, "price": 2000},
-    "오징어": {"chance": 5, "price": 3000},
-    "복어": {"chance": 4, "price": 4500},
-    "해파리": {"chance": 4, "price": 4000},
-    "문어": {"chance": 3, "price": 7000},
-    "거북이": {"chance": 2, "price": 10000},
-    "해마": {"chance": 1, "price": 5000},
-    "물범": {"chance": 0.5, "price": 30000},
-    "상어": {"chance": 0.3, "price": 15000},
-    "고래": {"chance": 0.2, "price": 20000}
+    "👢낡은 장화👢": {"chance": 15, "price": 50, "is_trash": True},
+    "🧻뭉쳐진 휴지🧻": {"chance": 15, "price": 50, "is_trash": True},
+    "📄찢어진 신문지📄": {"chance": 15, "price": 50, "is_trash": True},
+    "🥫찌그러진 캔🥫": {"chance": 15, "price": 50, "is_trash": True},
+    "🐟피라미🐟": {"chance": 12, "price": 100},
+    "🐠붕어🐠": {"chance": 10, "price": 500},
+    "🦐새우🦐": {"chance": 8, "price": 800},
+    "⭐불가사리⭐": {"chance": 7, "price": 1200},
+    "🎏잉어🎏": {"chance": 6, "price": 2000},
+    "🦑오징어🦑": {"chance": 5, "price": 3000},
+    "🐡복어🐡": {"chance": 4, "price": 4500},
+    "🪼해파리🪼": {"chance": 4, "price": 4000},
+    "🐙문어🐙": {"chance": 3, "price": 7000},
+    "🐢거북이🐢": {"chance": 2, "price": 30000},
+    "🦞가재🦞": {"chance": 1, "price": 1000},
+    "🐚소라게🐚": {"chance": 0.5, "price": 2500},
+    "🦈상어🦈": {"chance": 0.3, "price": 15000},
+    "🐋고래🐋": {"chance": 0.2, "price": 20000}
 }
 
 @bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
