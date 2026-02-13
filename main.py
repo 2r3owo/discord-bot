@@ -69,9 +69,6 @@ def set_user_data(data_dict, guild_id, user_id, value):
 # 노래 대기열 저장소 (서버별 관리)
 queues = {}
 
-# 서버별 반복 모드 저장
-loop_states = {}  # {guild_id: True/False}
-
 # YDL 및 FFMPEG 옵션
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -79,70 +76,31 @@ FFMPEG_OPTIONS = {
 }
 
 YDL_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
-    'cookiefile': 'cookies.txt',
+    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
 }
 
 # =====================
-# 보조 함수 (대기열 관리) - 반복 포함 수정본
+# 보조 함수 (대기열 관리) - 수정됨
 # =====================
-from collections import deque
-
-queues = {}        # guild_id: deque()
-loop_modes = {}    # guild_id: 0=끔, 1=한곡반복, 2=전체반복
-
-async def check_queue(interaction: discord.Interaction):
-    guild_id = interaction.guild.id
-    voice_client = interaction.guild.voice_client
-
-    if not voice_client:
-        return
-
-    # 대기열에 곡이 있으면
-    if guild_id in queues and queues[guild_id]:
-
-        next_song = queues[guild_id].popleft()
-
-        loop_mode = loop_modes.get(guild_id, 0)
-
-        # 🔁 한 곡 반복 (같은 곡 다시 맨 앞에)
-        if loop_mode == 1:
-            queues[guild_id].appendleft(next_song)
-
-        # 🔁 전체 반복 (곡을 맨 뒤로)
-        elif loop_mode == 2:
-            queues[guild_id].append(next_song)
-
-        source = discord.FFmpegOpusAudio(
-            next_song['url'],
-            executable="ffmpeg",
-            **FFMPEG_OPTIONS
-        )
-
-        def after_playing(error):
-            if error:
-                print(f"재생 오류: {error}")
-
-            asyncio.run_coroutine_threadsafe(
-                check_queue(interaction),
-                bot.loop
-            )
-
-        voice_client.play(source, after=after_playing)
-
-        await interaction.channel.send(
-            f"🎶 다음 곡 재생: **{next_song['title']}**"
-        )
-
+def check_queue(ctx):
+    """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
+    if ctx.guild.id in queues and queues[ctx.guild.id]:
+        next_song = queues[ctx.guild.id].popleft()
+        
+        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
+        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
+        ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
+        
+        bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
     else:
-        # 대기열이 비면 정리
-        if guild_id in queues:
-            del queues[guild_id]
+        if ctx.guild.id in queues:
+            del queues[ctx.guild.id]
 
 # =====================
 # 유틸리티 함수
@@ -578,31 +536,31 @@ async def 로또(interaction: discord.Interaction):
 
 # 1. 낚시 데이터 정의
 FISH_DATA = {
-    "낡은 장화": {"chance": 15, "price": 0, "is_trash": True},
-    "뭉쳐진 휴지": {"chance": 15, "price": 0, "is_trash": True},
-    "찢어진 신문지": {"chance": 15, "price": 0, "is_trash": True},
-    "찌그러진 캔": {"chance": 15, "price": 0, "is_trash": True},
-    "피라미": {"chance": 12, "price": 100},
-    "붕어": {"chance": 10, "price": 500},
-    "새우": {"chance": 8, "price": 800},
-    "불가사리": {"chance": 7, "price": 1200},
-    "잉어": {"chance": 6, "price": 2000},
-    "오징어": {"chance": 5, "price": 3000},
-    "복어": {"chance": 4, "price": 4500},
-    "해파리": {"chance": 4, "price": 4000},
-    "문어": {"chance": 3, "price": 7000},
-    "거북이": {"chance": 2, "price": 10000},
-    "해마": {"chance": 1, "price": 5000},
-    "물범": {"chance": 0.5, "price": 30000},
-    "상어": {"chance": 0.3, "price": 15000},
-    "고래": {"chance": 0.2, "price": 20000}
+    "👢낡은 장화👢": {"chance": 15, "price": 50, "is_trash": True},
+    "🧻뭉쳐진 휴지🧻": {"chance": 15, "price": 50, "is_trash": True},
+    "📄찢어진 신문지📄": {"chance": 15, "price": 50, "is_trash": True},
+    "🥫찌그러진 캔🥫": {"chance": 15, "price": 50, "is_trash": True},
+    "🐟피라미🐟": {"chance": 12, "price": 100},
+    "🐠붕어🐠": {"chance": 10, "price": 500},
+    "🦐새우🦐": {"chance": 8, "price": 800},
+    "⭐불가사리⭐": {"chance": 7, "price": 1200},
+    "🎏잉어🎏": {"chance": 6, "price": 2000},
+    "🦑오징어🦑": {"chance": 5, "price": 3000},
+    "🐡복어🐡": {"chance": 4, "price": 4500},
+    "🪼해파리🪼": {"chance": 4, "price": 4000},
+    "🐙문어🐙": {"chance": 3, "price": 7000},
+    "🐢거북이🐢": {"chance": 2, "price": 30000},
+    "🦞가재🦞": {"chance": 1, "price": 1000},
+    "🐚소라게🐚": {"chance": 0.5, "price": 2500},
+    "🦈상어🦈": {"chance": 0.3, "price": 15000},
+    "🐋고래🐋": {"chance": 0.2, "price": 20000}
 }
 
 @bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
 async def 낚시(interaction: discord.Interaction):
     g_id = interaction.guild.id
     u_id = interaction.user.id
-    await interaction.response.send_message(f"🎣 {interaction.user.display_name}님이 낚싯대를 던졌습니다... (기다리는 중)")
+    await interaction.response.send_message(f"🎣 어이, {interaction.user.display_name}이/가 낚시대 던졌으니까, 보채지 말고 기다리면서 찌나 봐.💢💢(물고기 기다리는 중...)")
     
     try:
         inventory = get_user_data(user_inventory, g_id, u_id, {})
@@ -614,14 +572,14 @@ async def 낚시(interaction: discord.Interaction):
         fish_info = FISH_DATA[caught_item]
 
         if fish_info.get("is_trash"):
-            embed = discord.Embed(title="⚙️ 낚시 실패...", description=f"에고... **{caught_item}**을 낚았습니다.", color=0x95a5a6)
+            embed = discord.Embed(title="⚙️ 낚시 실패...??", description=f"아휴... 꼴랑 **{caught_item}**을/를 낚았네.ㅋㅋ.", color=0x95a5a6)
             return await interaction.edit_original_response(content=None, embed=embed)
 
         inventory[caught_item] = inventory.get(caught_item, 0) + 1
         set_user_data(user_inventory, g_id, u_id, inventory)
         
-        embed = discord.Embed(title="✨ 낚시 성공!", description=f"**{interaction.user.display_name}**님, **{caught_item}**를 잡았습니다!", color=0x3498db)
-        embed.set_footer(text=f"현재 보관함에 {caught_item} {inventory[caught_item]}마리 보유 중")
+        embed = discord.Embed(title="✨ 와, 드디어 낚시 성공했네?ㅋㅋ", description=f"**{interaction.user.display_name}**이/가 **{caught_item}**를 잡았다!! ㅊㅋㅊㅋ😎", color=0x3498db)
+        embed.set_footer(text=f"현재 보관함에 {caught_item} {inventory[caught_item]}마리 보유 중임. 더 낚으란 말이야!!🤨")
         await interaction.edit_original_response(content=None, embed=embed)
     except Exception as e:
         await interaction.edit_original_response(content=f"❌ 오류 발생: {e}")
@@ -643,7 +601,7 @@ async def 보관함(interaction: discord.Interaction):
     inventory = get_user_data(user_inventory, g_id, u_id, {})
     
     if not inventory or sum(inventory.values()) == 0:
-        return await interaction.response.send_message("텅~ 보관함이 비어있습니다.", ephemeral=True)
+        return await interaction.response.send_message("텅~ 보관함이 비어있는데, 뭐해? 안 잡고. 더 분발하라구.😤", ephemeral=True)
 
     msg = "\n".join([f"**{name}**: {count}마리" for name, count in inventory.items() if count > 0])
     embed = discord.Embed(title=f"🎒 {interaction.user.display_name}님의 보관함", description=msg, color=0x95a5a6)
@@ -657,7 +615,7 @@ async def 팔기(interaction: discord.Interaction, 물고기이름: str = None, 
     inventory = get_user_data(user_inventory, g_id, u_id, {})
 
     if not inventory or sum(inventory.values()) == 0:
-        return await interaction.response.send_message("❌ 판매할 물고기가 없습니다.", ephemeral=True)
+        return await interaction.response.send_message("❌ 판매할 물고기가 없는데...? 낚시터 와서 자냐?", ephemeral=True)
 
     total_profit = 0
 
@@ -670,14 +628,14 @@ async def 팔기(interaction: discord.Interaction, 물고기이름: str = None, 
         sell_count = 갯수 if 갯수 is not None else current_count
         
         if sell_count <= 0:
-            return await interaction.response.send_message("❌ 1마리 이상 판매해야 합니다.", ephemeral=True)
+            return await interaction.response.send_message("❌ 1마리 이상 판매해야지, 뭐해?.", ephemeral=True)
         if sell_count > current_count:
-            return await interaction.response.send_message(f"❌ 부족합니다. (현재 {current_count}마리 보유)", ephemeral=True)
+            return await interaction.response.send_message(f"❌ 부족부족부족. (현재 {current_count}마리 보유)", ephemeral=True)
         
         profit = FISH_DATA[물고기이름]["price"] * sell_count
         inventory[물고기이름] -= sell_count
         total_profit = profit
-        result_msg = f"✅ **{물고기이름} {sell_count}마리**를 팔아 **{total_profit:,}원**을 벌었습니다!"
+        result_msg = f"✅ **{물고기이름} {sell_count}마리**를 팔아 **{total_profit:,}원**을 벌었네! 드디어 돈이다! 니돈, 내거. 내돈은 내거!!"
 
     # 2. 전체 판매
     else:
@@ -1202,8 +1160,8 @@ async def 야꺼져(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
 
-@bot.tree.command(name="야노래해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
-async def 야노래해(interaction: discord.Interaction, search: str):
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
+async def 야재생해(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
@@ -1215,7 +1173,6 @@ async def 야노래해(interaction: discord.Interaction, search: str):
 
     try:
         queues[interaction.guild.id] = deque()
-
         
         loop = asyncio.get_event_loop()
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
@@ -1234,19 +1191,6 @@ async def 야노래해(interaction: discord.Interaction, search: str):
         
     except Exception as e:
         await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
-
-@bot.tree.command(name="반복", description="현재 곡 반복 재생 ON/OFF")
-async def 반복(interaction: discord.Interaction):
-    guild_id = interaction.guild.id
-    
-    current = loop_states.get(guild_id, False)
-    loop_states[guild_id] = not current
-
-    if loop_states[guild_id]:
-        await interaction.response.send_message("🔁 반복 재생이 **켜졌습니다!**")
-    else:
-        await interaction.response.send_message("⏹️ 반복 재생이 **꺼졌습니다!**")
-
 
 @bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
 async def 야기다려(interaction: discord.Interaction, search: str):
@@ -1291,17 +1235,11 @@ async def 야멈춰(interaction: discord.Interaction):
 
 @bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
 async def 야넘겨(interaction: discord.Interaction):
-    voice_client = interaction.guild.voice_client
-
-    if not voice_client or not voice_client.is_playing():
-        return await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
-
-    voice_client.stop()
-
-    # 다음 곡 강제 실행
-    await check_queue(interaction)
-
-    await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
+    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        interaction.guild.voice_client.stop()
+        await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
+    else:
+        await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
 
 @bot.tree.command(name="야목록", description="현재 노래 대기열을 확인합니다.")
 async def 야목록(interaction: discord.Interaction):
