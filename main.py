@@ -1306,8 +1306,18 @@ async def play_now(interaction: discord.Interaction, search: str):
                 None,
                 lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
             )
-            if "entries" in info:
-                info = info["entries"][0]
+
+        # ✅ 여기부터 수정
+        if not info:
+            await interaction.followup.send("❌ 정보를 불러오지 못했습니다.")
+            return
+
+        if "entries" in info:
+            if not info["entries"]:
+                await interaction.followup.send("❌ 검색 결과가 없습니다.")
+                return
+            info = info["entries"][0]
+        # ✅ 여기까지 수정
 
         song = {
             "title": info["title"],
@@ -1340,96 +1350,6 @@ async def play_now(interaction: discord.Interaction, search: str):
 
     except Exception as e:
         await interaction.followup.send(f"❌ 오류 발생: {e}")
-
-
-# =====================
-# 대기열 추가
-# =====================
-
-@bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
-async def add_queue(interaction: discord.Interaction, search: str):
-
-    if not interaction.user.voice:
-        return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
-
-    await interaction.response.defer(thinking=True)
-
-    try:
-        if not interaction.guild.voice_client:
-            await interaction.user.voice.channel.connect()
-
-        if interaction.guild.id not in queues:
-            queues[interaction.guild.id] = deque()
-
-        loop = asyncio.get_event_loop()
-        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = await loop.run_in_executor(
-                None,
-                lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
-            )
-            if "entries" in info:
-                info = info["entries"][0]
-
-        song = {
-            "title": info["title"],
-            "stream_url": info["url"],
-        }
-
-        vc = interaction.guild.voice_client
-
-        if vc.is_playing() or vc.is_paused():
-            queues[interaction.guild.id].append(song)
-            await interaction.followup.send(f"✅ 대기열 추가: **{song['title']}**")
-        else:
-            await interaction.followup.send("🔎 노래를 불러오는 중입니다...")
-
-            source = await discord.FFmpegOpusAudio.from_probe(
-                song["stream_url"],
-                executable="ffmpeg",
-                **FFMPEG_OPTIONS
-            )
-
-            def after_playing(error):
-                if error:
-                    print("after_playing error:", error)
-                asyncio.run_coroutine_threadsafe(
-                    play_next(interaction.guild), bot.loop
-                )
-
-            vc.play(source, after=after_playing)
-            await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ 오류 발생: {e}")
-
-
-# =====================
-# 스킵
-# =====================
-
-@bot.tree.command(name="야넘겨", description="현재 노래를 건너뜁니다.")
-async def skip(interaction: discord.Interaction):
-    vc = interaction.guild.voice_client
-    if vc and (vc.is_playing() or vc.is_paused()):
-        vc.stop()
-        await interaction.response.send_message("⏭ 넘겼습니다.")
-    else:
-        await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
-
-
-# =====================
-# 정지
-# =====================
-
-@bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
-async def stop(interaction: discord.Interaction):
-    vc = interaction.guild.voice_client
-    if vc:
-        queues[interaction.guild.id] = deque()
-        vc.stop()
-        await interaction.response.send_message("⏹ 재생 중지 및 대기열 초기화.")
-    else:
-        await interaction.response.send_message("❌ 재생 중이 아닙니다.", ephemeral=True)
 
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
