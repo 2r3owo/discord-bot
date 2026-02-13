@@ -95,6 +95,7 @@ class MusicControls(discord.ui.View):
             vc.stop()
             await interaction.response.send_message("⏭ 다음 곡", ephemeral=True)
 
+
     @discord.ui.button(label="🔁", style=discord.ButtonStyle.gray)
     async def loop(self, interaction: discord.Interaction, button: discord.ui.Button):
         loop_modes[self.guild_id] = not loop_modes.get(self.guild_id, False)
@@ -1291,48 +1292,54 @@ async def play_now(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-    await interaction.response.defer()
+    await interaction.response.defer(thinking=True)
 
-    if not interaction.guild.voice_client:
-        await interaction.user.voice.channel.connect()
+    try:
+        if not interaction.guild.voice_client:
+            await interaction.user.voice.channel.connect()
 
-    queues[interaction.guild.id] = deque()
+        queues[interaction.guild.id] = deque()
 
-    loop = asyncio.get_event_loop()
-    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-        info = await loop.run_in_executor(
-            None,
-            lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
+        loop = asyncio.get_event_loop()
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = await loop.run_in_executor(
+                None,
+                lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
+            )
+            if "entries" in info:
+                info = info["entries"][0]
+
+        song = {
+            "title": info["title"],
+            "stream_url": info["url"],
+        }
+
+        await interaction.followup.send("🔎 노래를 불러오는 중입니다...")
+
+        vc = interaction.guild.voice_client
+
+        if vc.is_playing() or vc.is_paused():
+            vc.stop()
+
+        source = await discord.FFmpegOpusAudio.from_probe(
+            song["stream_url"],
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
         )
-        if "entries" in info:
-            info = info["entries"][0]
 
-    song = {
-        "title": info["title"],
-        "stream_url": info["url"],
-    }
+        def after_playing(error):
+            if error:
+                print("after_playing error:", error)
+            asyncio.run_coroutine_threadsafe(
+                play_next(interaction.guild), bot.loop
+            )
 
-    vc = interaction.guild.voice_client
+        vc.play(source, after=after_playing)
 
-    if vc.is_playing() or vc.is_paused():
-        vc.stop()
+        await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
 
-    source = await discord.FFmpegOpusAudio.from_probe(
-        song["stream_url"],
-        executable="ffmpeg",
-        **FFMPEG_OPTIONS
-    )
-
-    def after_playing(error):
-        fut = asyncio.run_coroutine_threadsafe(play_next(interaction.guild), bot.loop)
-        try:
-            fut.result()
-        except:
-            pass
-
-    vc.play(source, after=after_playing)
-
-    await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
+    except Exception as e:
+        await interaction.followup.send(f"❌ 오류 발생: {e}")
 
 
 # =====================
@@ -1345,49 +1352,55 @@ async def add_queue(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-    await interaction.response.defer()
+    await interaction.response.defer(thinking=True)
 
-    if not interaction.guild.voice_client:
-        await interaction.user.voice.channel.connect()
+    try:
+        if not interaction.guild.voice_client:
+            await interaction.user.voice.channel.connect()
 
-    if interaction.guild.id not in queues:
-        queues[interaction.guild.id] = deque()
+        if interaction.guild.id not in queues:
+            queues[interaction.guild.id] = deque()
 
-    loop = asyncio.get_event_loop()
-    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-        info = await loop.run_in_executor(
-            None,
-            lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
-        )
-        if "entries" in info:
-            info = info["entries"][0]
+        loop = asyncio.get_event_loop()
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = await loop.run_in_executor(
+                None,
+                lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
+            )
+            if "entries" in info:
+                info = info["entries"][0]
 
-    song = {
-        "title": info["title"],
-        "stream_url": info["url"],
-    }
+        song = {
+            "title": info["title"],
+            "stream_url": info["url"],
+        }
 
-    vc = interaction.guild.voice_client
+        vc = interaction.guild.voice_client
 
-    if vc.is_playing() or vc.is_paused():
-        queues[interaction.guild.id].append(song)
-        await interaction.followup.send(f"✅ 대기열 추가: **{song['title']}**")
-    else:
-        source = await discord.FFmpegOpusAudio.from_probe(
-            song["stream_url"],
-            executable="ffmpeg",
-            **FFMPEG_OPTIONS
-        )
+        if vc.is_playing() or vc.is_paused():
+            queues[interaction.guild.id].append(song)
+            await interaction.followup.send(f"✅ 대기열 추가: **{song['title']}**")
+        else:
+            await interaction.followup.send("🔎 노래를 불러오는 중입니다...")
 
-        def after_playing(error):
-            fut = asyncio.run_coroutine_threadsafe(play_next(interaction.guild), bot.loop)
-            try:
-                fut.result()
-            except:
-                pass
+            source = await discord.FFmpegOpusAudio.from_probe(
+                song["stream_url"],
+                executable="ffmpeg",
+                **FFMPEG_OPTIONS
+            )
 
-        vc.play(source, after=after_playing)
-        await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
+            def after_playing(error):
+                if error:
+                    print("after_playing error:", error)
+                asyncio.run_coroutine_threadsafe(
+                    play_next(interaction.guild), bot.loop
+                )
+
+            vc.play(source, after=after_playing)
+            await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ 오류 발생: {e}")
 
 
 # =====================
