@@ -111,45 +111,44 @@ class MusicControls(discord.ui.View):
         await interaction.response.send_message("⏹ 정지", ephemeral=True)
 
 # =============================
-# 🔁 다음곡 자동재생
+# 🔁 다음곡 자동재생 (반복 포함 안정화)
 # =============================
-def check_queue(interaction):
-    guild_id = interaction.guild.id
 
-    if guild_id in queues and queues[guild_id]:
+async def play_next(guild: discord.Guild):
 
-        if loop_modes.get(guild_id, False):
-            next_song = queues[guild_id][0]
-        else:
-            next_song = queues[guild_id].popleft()
+    guild_id = guild.id
 
-        source = discord.FFmpegOpusAudio(
-            next_song["stream_url"],
-            executable="ffmpeg",
-            **FFMPEG_OPTIONS
-        )
-
-        interaction.guild.voice_client.play(
-            source,
-            after=lambda e: check_queue(interaction)
-        )
-
-        embed = create_music_embed(
-            next_song["title"],
-            next_song["webpage_url"],
-            next_song["thumbnail"],
-            next_song["uploader"],
-            "▶ 재생 중"
-        )
-
-        bot.loop.create_task(
-            interaction.channel.send(
-                embed=embed,
-                view=MusicControls(guild_id)
-            )
-        )
-    else:
+    if guild_id not in queues or not queues[guild_id]:
         queues.pop(guild_id, None)
+        return
+
+    vc = guild.voice_client
+    if not vc:
+        return
+
+    # 🔁 한 곡 반복
+    if loop_modes.get(guild_id, False):
+        next_song = queues[guild_id][0]
+    else:
+        next_song = queues[guild_id].popleft()
+
+    source = await discord.FFmpegOpusAudio.from_probe(
+        next_song["stream_url"],
+        executable="ffmpeg",
+        **FFMPEG_OPTIONS
+    )
+
+    def after_playing(error):
+        fut = asyncio.run_coroutine_threadsafe(
+            play_next(guild),
+            bot.loop
+        )
+        try:
+            fut.result()
+        except:
+            pass
+
+    vc.play(source, after=after_playing)
 
 # =====================
 # 데이터 저장 및 관리 (서버별 독립 구조)
@@ -1252,11 +1251,11 @@ async def on_ready():
     if not test_greeting.is_running(): test_greeting.start()
 
 # =====================
-# 음성 및 노래 재생 관련 (수정 완료 버전)
+# 음성 참여
 # =====================
 
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
-async def 야드루와(interaction: discord.Interaction):
+async def join(interaction: discord.Interaction):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
 
@@ -1268,17 +1267,26 @@ async def 야드루와(interaction: discord.Interaction):
     await interaction.response.send_message("🎧 들어왔어요!")
 
 
+# =====================
+# 음성 퇴장
+# =====================
+
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
-async def 야꺼져(interaction: discord.Interaction):
+async def leave(interaction: discord.Interaction):
     if interaction.guild.voice_client:
         await interaction.guild.voice_client.disconnect()
+        queues.pop(interaction.guild.id, None)
         await interaction.response.send_message("👋 나갈게요!")
     else:
         await interaction.response.send_message("❌ 저는 음성 채널에 없어요.", ephemeral=True)
 
 
+# =====================
+# 즉시 재생 (대기열 초기화)
+# =====================
+
 @bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.")
-async def 야재생해(interaction: discord.Interaction, search: str):
+async def play_now(interaction: discord.Interaction, search: str):
 
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
@@ -1288,17 +1296,13 @@ async def 야재생해(interaction: discord.Interaction, search: str):
     if not interaction.guild.voice_client:
         await interaction.user.voice.channel.connect()
 
-    # 대기열 초기화
     queues[interaction.guild.id] = deque()
 
     loop = asyncio.get_event_loop()
     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         info = await loop.run_in_executor(
             None,
-            lambda: ydl.extract_info(
-                f"ytsearch:{search}" if not search.startswith("http") else search,
-                download=False
-            )
+            lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
         )
         if "entries" in info:
             info = info["entries"][0]
@@ -1306,13 +1310,12 @@ async def 야재생해(interaction: discord.Interaction, search: str):
     song = {
         "title": info["title"],
         "stream_url": info["url"],
-        "webpage_url": info["webpage_url"],
-        "thumbnail": info.get("thumbnail"),
-        "uploader": info.get("uploader", "알 수 없음")
     }
 
-    if interaction.guild.voice_client.is_playing():
-        interaction.guild.voice_client.stop()
+    vc = interaction.guild.voice_client
+
+    if vc.is_playing() or vc.is_paused():
+        vc.stop()
 
     source = await discord.FFmpegOpusAudio.from_probe(
         song["stream_url"],
@@ -1320,27 +1323,24 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         **FFMPEG_OPTIONS
     )
 
-    interaction.guild.voice_client.play(
-        source,
-        after=lambda e: check_queue(interaction)
-    )
+    def after_playing(error):
+        fut = asyncio.run_coroutine_threadsafe(play_next(interaction.guild), bot.loop)
+        try:
+            fut.result()
+        except:
+            pass
 
-    embed = create_music_embed(
-        song["title"],
-        song["webpage_url"],
-        song["thumbnail"],
-        song["uploader"],
-        "▶ 즉시 재생 시작"
-    )
+    vc.play(source, after=after_playing)
 
-    await interaction.followup.send(
-        embed=embed,
-        view=MusicControls(interaction.guild.id)
-    )
+    await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
 
+
+# =====================
+# 대기열 추가
+# =====================
 
 @bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
-async def 야기다려(interaction: discord.Interaction, search: str):
+async def add_queue(interaction: discord.Interaction, search: str):
 
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
@@ -1357,10 +1357,7 @@ async def 야기다려(interaction: discord.Interaction, search: str):
     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
         info = await loop.run_in_executor(
             None,
-            lambda: ydl.extract_info(
-                f"ytsearch:{search}" if not search.startswith("http") else search,
-                download=False
-            )
+            lambda: ydl.extract_info(f"ytsearch:{search}", download=False)
         )
         if "entries" in info:
             info = info["entries"][0]
@@ -1368,14 +1365,13 @@ async def 야기다려(interaction: discord.Interaction, search: str):
     song = {
         "title": info["title"],
         "stream_url": info["url"],
-        "webpage_url": info["webpage_url"],
-        "thumbnail": info.get("thumbnail"),
-        "uploader": info.get("uploader", "알 수 없음")
     }
 
-    if interaction.guild.voice_client.is_playing():
+    vc = interaction.guild.voice_client
+
+    if vc.is_playing() or vc.is_paused():
         queues[interaction.guild.id].append(song)
-        await interaction.followup.send(f"✅ 대기열에 추가됨: **{song['title']}**")
+        await interaction.followup.send(f"✅ 대기열 추가: **{song['title']}**")
     else:
         source = await discord.FFmpegOpusAudio.from_probe(
             song["stream_url"],
@@ -1383,41 +1379,44 @@ async def 야기다려(interaction: discord.Interaction, search: str):
             **FFMPEG_OPTIONS
         )
 
-        interaction.guild.voice_client.play(
-            source,
-            after=lambda e: check_queue(interaction)
-        )
+        def after_playing(error):
+            fut = asyncio.run_coroutine_threadsafe(play_next(interaction.guild), bot.loop)
+            try:
+                fut.result()
+            except:
+                pass
 
-        embed = create_music_embed(
-            song["title"],
-            song["webpage_url"],
-            song["thumbnail"],
-            song["uploader"],
-            "▶ 재생 시작"
-        )
-
-        await interaction.followup.send(
-            embed=embed,
-            view=MusicControls(interaction.guild.id)
-        )
+        vc.play(source, after=after_playing)
+        await interaction.followup.send(f"▶ 재생 시작: **{song['title']}**")
 
 
-@bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
-async def 야멈춰(interaction: discord.Interaction):
-    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
-        interaction.guild.voice_client.stop()
-        await interaction.response.send_message("⏹ 재생을 중지했습니다.")
-    else:
-        await interaction.response.send_message("❌ 재생 중인 노래가 없어요.", ephemeral=True)
-
+# =====================
+# 스킵
+# =====================
 
 @bot.tree.command(name="야넘겨", description="현재 노래를 건너뜁니다.")
-async def 야넘겨(interaction: discord.Interaction):
-    if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
-        interaction.guild.voice_client.stop()
-        await interaction.response.send_message("⏭ 현재 노래를 넘겼습니다.")
+async def skip(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if vc and (vc.is_playing() or vc.is_paused()):
+        vc.stop()
+        await interaction.response.send_message("⏭ 넘겼습니다.")
     else:
         await interaction.response.send_message("❌ 넘길 노래가 없습니다.", ephemeral=True)
+
+
+# =====================
+# 정지
+# =====================
+
+@bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
+async def stop(interaction: discord.Interaction):
+    vc = interaction.guild.voice_client
+    if vc:
+        queues[interaction.guild.id] = deque()
+        vc.stop()
+        await interaction.response.send_message("⏹ 재생 중지 및 대기열 초기화.")
+    else:
+        await interaction.response.send_message("❌ 재생 중이 아닙니다.", ephemeral=True)
 
 # =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
