@@ -161,32 +161,17 @@ async def send_once(key, hour, minute, message):
 
 @tasks.loop(minutes=1)
 async def morning():
-    await send_once(
-        "morning",
-        6,
-        0,
-        "@everyone 기상! 기상! ٩(◕ᗜ◕)و 햇살이 똑똑똑~ 오늘 하루도 귀엽게 시작해 보자구요! ☀️"
-    )
+    pass
 
 
 @tasks.loop(minutes=1)
 async def lunch():
-    await send_once(
-        "lunch",
-        12,
-        0,
-        "@everyone 🍚 점심시간! 맛있게 드세요!"
-    )
+    pass
 
 
 @tasks.loop(minutes=1)
 async def dinner():
-    await send_once(
-        "dinner",
-        19,
-        0,
-        "@everyone 🛌 오늘도 고생했어요! 저녁 챙겨드세요!"
-    )
+    pass
 
 
 # =====================
@@ -194,12 +179,7 @@ async def dinner():
 # =====================
 @tasks.loop(minutes=1)
 async def test_greeting():
-    await send_once(
-        "test_14",
-        14,
-        0,
-        "@everyone 🧪 하루의 반이 지났습니다. 모두들 졸지 말고, 그냥 잠을 자버리세요!!! 파이팅!!!!🔥"
-    )
+    pass
 
 
 # =====================
