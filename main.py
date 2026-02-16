@@ -544,26 +544,44 @@ async def 로또(interaction: discord.Interaction):
 # 경제 시스템: 낚시 시스템 (수정 버전)
 # ===================== 
 
-# 1. 낚시 데이터 정의
 FISH_DATA = {
-    "낡은 장화": {"chance": 15, "price": 0, "is_trash": True},
-    "뭉쳐진 휴지": {"chance": 15, "price": 0, "is_trash": True},
-    "찢어진 신문지": {"chance": 15, "price": 0, "is_trash": True},
-    "찌그러진 캔": {"chance": 15, "price": 0, "is_trash": True},
-    "피라미": {"chance": 12, "price": 100},
-    "붕어": {"chance": 10, "price": 500},
-    "새우": {"chance": 8, "price": 800},
-    "불가사리": {"chance": 7, "price": 1200},
-    "잉어": {"chance": 6, "price": 2000},
-    "오징어": {"chance": 5, "price": 3000},
-    "복어": {"chance": 4, "price": 4500},
-    "해파리": {"chance": 4, "price": 4000},
-    "문어": {"chance": 3, "price": 7000},
-    "거북이": {"chance": 2, "price": 10000},
-    "해마": {"chance": 1, "price": 5000},
-    "물범": {"chance": 0.5, "price": 30000},
-    "상어": {"chance": 0.3, "price": 15000},
-    "고래": {"chance": 0.2, "price": 20000}
+    # --- 쓰레기류 (Trash) - 가격 100원 통일 ---
+    "낡은 장화 👞": {"chance": 10, "price": 100, "is_trash": True},
+    "뭉쳐진 휴지 🧻": {"chance": 10, "price": 100, "is_trash": True},
+    "찢어진 신문지 🗞️": {"chance": 10, "price": 100, "is_trash": True},
+    "찌그러진 캔 🥫": {"chance": 10, "price": 100, "is_trash": True},
+    "플라스틱 병 🧴": {"chance": 10, "price": 100, "is_trash": True},
+
+    # --- 일반 어종 (Common) ---
+    "피라미 🐟": {"chance": 12, "price": 100},
+    "붕어 🐠": {"chance": 10, "price": 500},
+    "고등어 🐟": {"chance": 9, "price": 700},
+    "새우 🦐": {"chance": 8, "price": 800},
+    "불가사리 🌟": {"chance": 7, "price": 1200},
+    "연어 🍣": {"chance": 6.5, "price": 1500},
+
+    # --- 고급 어종 (Uncommon) ---
+    "잉어 🎏": {"chance": 6, "price": 2000},
+    "게 🦀": {"chance": 5.5, "price": 2500},
+    "오징어 🦑": {"chance": 5, "price": 3000},
+    "갈치 🗡️": {"chance": 4.5, "price": 3500},
+    "해파리 🪼": {"chance": 4, "price": 4000},
+    "복어 🐡": {"chance": 4, "price": 4500},
+    "해마 🦄": {"chance": 3.5, "price": 5000},
+
+    # --- 희귀 어종 (Rare) ---
+    "가오리 🪁": {"chance": 3, "price": 6000},
+    "문어 🐙": {"chance": 3, "price": 7000},
+    "랍스터 🦞": {"chance": 2.5, "price": 8500},
+    "거북이 🐢": {"chance": 2, "price": 10000},
+    "참치 🐟": {"chance": 1.5, "price": 12000},
+
+    # --- 전설 어종 (Legendary) ---
+    "상어 🦈": {"chance": 0.5, "price": 15000},
+    "황금잉어 ✨": {"chance": 0.4, "price": 20000},
+    "고래 🐋": {"chance": 0.3, "price": 25000},
+    "물범 🦭": {"chance": 0.2, "price": 30000},
+    "심해어 👹": {"chance": 0.1, "price": 30000}
 }
 
 @bot.tree.command(name="낚시", description="이 서버의 보관함에 물고기를 잡습니다.")
