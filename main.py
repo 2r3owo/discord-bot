@@ -785,23 +785,29 @@ async def 사냥(interaction: discord.Interaction):
 async def 동물가격표(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📜 사냥 동물 시세표",
-        description="희귀한 동물일수록 잡을 확률이 낮지만 훨씬 비쌉니다.",
+        description="희귀한 동물일수록 잡을 확률이 낮지만 훨씬 비쌉니다.\n" + "─" * 20,
         color=0xf1c40f
     )
     
-    for name, info in HUNT_DATA.items():
-        # 확률에 따른 난이도 표시 (시각적 효과)
+    # 40개를 한 번에 필드로 넣으면 터지므로, 문자열로 합쳐서 추가합니다.
+    # 혹은 필드를 20개씩 끊어서 여러 개의 임베드를 리스트로 보낼 수도 있습니다.
+    
+    pages = []
+    current_text = ""
+    
+    for i, (name, info) in enumerate(HUNT_DATA.items()):
         if info["chance"] >= 30: difficulty = "🟢 쉬움"
         elif info["chance"] >= 15: difficulty = "🟡 보통"
         else: difficulty = "🔴 어려움"
         
-        embed.add_field(
-            name=name,
-            value=f"판매가: **{info['price']:,}원**\n난이도: {difficulty}",
-            inline=True
-        )
-    
-    embed.set_footer(text="주의: 사냥 실패 시 최대 1,000원의 치료비가 발생합니다.")
+        current_text += f"{name} | **{info['price']:,}원** | {difficulty}\n"
+        
+        # 15개마다 내용을 끊어서 필드로 추가 (가독성 목적)
+        if (i + 1) % 15 == 0 or (i + 1) == len(HUNT_DATA):
+            embed.add_field(name="목록", value=current_text, inline=False)
+            current_text = ""
+
+    embed.set_footer(text="주의: 사냥 실패 시 치료비가 발생할 수 있습니다.")
     await interaction.response.send_message(embed=embed)
 
 # # =====================
