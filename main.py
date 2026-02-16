@@ -86,21 +86,28 @@ YDL_OPTIONS = {
 }
 
 # =====================
-# 보조 함수 (대기열 관리) - 수정됨
+# 보조 함수 (대기열 관리) - 수정 및 보완
 # =====================
-def check_queue(ctx):
+def check_queue(interaction: discord.Interaction):
     """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
-    if ctx.guild.id in queues and queues[ctx.guild.id]:
-        next_song = queues[ctx.guild.id].popleft()
+    guild_id = interaction.guild.id
+    
+    if guild_id in queues and queues[guild_id]:
+        next_song = queues[guild_id].popleft()
         
-        # Railway 환경을 위해 executable="ffmpeg"를 명시적으로 추가했습니다.
+        # FFmpeg 소스 생성
         source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        ctx.voice_client.play(source, after=lambda e: check_queue(ctx))
         
-        bot.loop.create_task(ctx.send(f"🎶 다음 곡 재생: **{next_song['title']}**"))
+        # 다음 곡 재생 (after에 다시 check_queue를 등록하여 무한 반복)
+        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+        
+        # 다음 곡 재생 알림 (비동기 루프 사용)
+        coro = interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**")
+        asyncio.run_coroutine_threadsafe(coro, bot.loop)
     else:
-        if ctx.guild.id in queues:
-            del queues[ctx.guild.id]
+        # 더 이상 재생할 곡이 없으면 대기열 삭제 (자동 퇴장은 선택 사항)
+        if guild_id in queues:
+            del queues[guild_id]
 
 # =====================
 # 유틸리티 함수
@@ -1160,18 +1167,18 @@ async def 야꺼져(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
 
-@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다. (대기열 초기화)")
+@bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.")
 async def 야재생해(interaction: discord.Interaction, search: str):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 음성채널에 먼저 들어가 주세요", ephemeral=True)
 
-    # 슬래시 커맨드는 응답 시간이 짧으므로 미리 생각 중임을 표시
     await interaction.response.defer()
 
     if not interaction.guild.voice_client:
         await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
 
     try:
+        # 즉시 재생이므로 대기열 초기화
         queues[interaction.guild.id] = deque()
         
         loop = asyncio.get_event_loop()
@@ -1183,10 +1190,10 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         title = info['title']
         
         if interaction.guild.voice_client.is_playing():
-            interaction.guild.voice_client.stop()
+            interaction.guild.voice_client.stop() # stop 시 check_queue가 호출되지만 대기열이 비어있어 안전함
         
         source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction)) # interaction으로 전달
+        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
         
     except Exception as e:
@@ -1228,6 +1235,8 @@ async def 야기다려(interaction: discord.Interaction, search: str):
 @bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
 async def 야멈춰(interaction: discord.Interaction):
     if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        # 대기열까지 다 날려버리고 싶다면 아래 주석 해제
+        # if interaction.guild.id in queues: queues[interaction.guild.id].clear()
         interaction.guild.voice_client.stop()
         await interaction.response.send_message("⏹️ 재생을 중지했습니다.")
     else:
@@ -1236,6 +1245,7 @@ async def 야멈춰(interaction: discord.Interaction):
 @bot.tree.command(name="야넘겨", description="현재 노래를 건너뛰고 다음 곡을 재생합니다.")
 async def 야넘겨(interaction: discord.Interaction):
     if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+        # .stop()을 하면 자동으로 play의 after(check_queue)가 실행되어 다음 곡으로 넘어갑니다.
         interaction.guild.voice_client.stop()
         await interaction.response.send_message("⏭️ 현재 노래를 넘겼습니다!")
     else:
