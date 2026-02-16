@@ -662,6 +662,130 @@ async def 팔기(interaction: discord.Interaction, 물고기이름: str = None, 
     
     await interaction.response.send_message(f"{result_msg}\n💵 현재 잔고: **{current_money + total_profit:,}원**")
 
+# ===================== 
+# 경제 시스템: 사냥 시스템
+# ===================== 
+
+# 사냥 동물 데이터 (총 40종, 최대 가격 30,000원 제한)
+HUNT_DATA = {
+    "🪰 파리": {"chance": 150, "price": 100},
+    "🦟 모기": {"chance": 140, "price": 200},
+    "🐜 개미": {"chance": 130, "price": 300},
+    "🐞 무당벌레": {"chance": 120, "price": 400},
+    "🐭 생쥐": {"chance": 110, "price": 600},
+    "🐦 참새": {"chance": 100, "price": 800},
+    "🐥 병아리": {"chance": 95, "price": 1000},
+    "🐿️ 다람쥐": {"chance": 90, "price": 1200},
+    "🐸 개구리": {"chance": 85, "price": 1500},
+    "🦎 도마뱀": {"chance": 80, "price": 1800},
+    "🐰 토끼": {"chance": 75, "price": 2200},
+    "🐥 오리": {"chance": 70, "price": 2800},
+    "🐓 수탉": {"chance": 65, "price": 3500},
+    "🦔 고슴도치": {"chance": 60, "price": 4200},
+    "🐱 길고양이": {"chance": 55, "price": 5000},
+    "🐕 들개": {"chance": 50, "price": 6000},
+    "🦝 너구리": {"chance": 45, "price": 7200},
+    "🦡 오소리": {"chance": 40, "price": 8500},
+    " Foxes 여우": {"chance": 35, "price": 10000},
+    "🦌 사슴": {"chance": 30, "price": 11500},
+    "🐗 멧돼지": {"chance": 28, "price": 13000},
+    "🐍 뱀": {"chance": 25, "price": 14500},
+    "🦃 칠면조": {"chance": 22, "price": 16000},
+    "🦅 독수리": {"chance": 20, "price": 17500},
+    "🐺 늑대": {"chance": 18, "price": 19000},
+    "🦭 물개": {"chance": 15, "price": 21000},
+    "🐆 표범": {"chance": 12, "price": 23000},
+    "🐊 악어": {"chance": 10, "price": 25000},
+    "🐻 곰": {"chance": 8, "price": 27000},
+    "🐃 버팔로": {"chance": 7, "price": 28500},
+    "🦏 코뿔소": {"chance": 6, "price": 29000},
+    "🦍 고릴라": {"chance": 5, "price": 29500},
+    "🐯 호랑이": {"chance": 4, "price": 29800},
+    "🦁 사자": {"chance": 3, "price": 30000},
+    "🐘 코끼리": {"chance": 2, "price": 30000},
+    "🦖 공룡": {"chance": 1, "price": 30000},
+    "🦄 유니콘": {"chance": 0.8, "price": 30000},
+    "🔥 피닉스": {"chance": 0.5, "price": 30000},
+    "🐉 용": {"chance": 0.3, "price": 30000},
+    "✨ 해태": {"chance": 0.1, "price": 30000}
+}
+
+@bot.tree.command(name="사냥", description="야생 동물을 사냥하여 돈을 법니다. (부상 주의!)")
+async def 사냥(interaction: discord.Interaction):
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    
+    # 1. 초기 메시지 전송
+    await interaction.response.send_message(f"🏹 {interaction.user.display_name}님이 숲으로 사냥을 떠납니다... 🌲")
+    
+    # 2초 대기 (긴장감 조성)
+    await asyncio.sleep(2) 
+
+    # 2. 성공/실패 판정 (60% 성공, 40% 실패/부상)
+    is_success = random.random() < 0.6 
+    current_money = get_user_data(user_money, g_id, u_id, 0)
+
+    if is_success:
+        # --- 사냥 성공 로직 ---
+        animal_names = list(HUNT_DATA.keys())
+        animal_weights = [a["chance"] for a in HUNT_DATA.values()]
+        
+        # 확률에 따라 동물 선택
+        caught_animal = random.choices(animal_names, weights=animal_weights, k=1)[0]
+        reward = HUNT_DATA[caught_animal]["price"]
+        
+        # 돈 지급 및 저장 (서버별 독립)
+        new_money = current_money + reward
+        set_user_data(user_money, g_id, u_id, new_money)
+
+        embed = discord.Embed(
+            title="🎯 사냥 성공!", 
+            description=f"**{caught_animal}**을(를) 잡았습니다!\n판매 수익으로 **{reward:,}원**을 벌었습니다.", 
+            color=0x2ecc71
+        )
+        embed.set_footer(text=f"현재 서버 잔고: {new_money:,}원")
+        await interaction.edit_original_response(content=None, embed=embed)
+
+    else:
+        # --- 사냥 실패 및 부상 로직 ---
+        # 100원에서 2000원 사이의 랜덤 부상 비용 발생
+        damage_cost = random.randint(100, 2000)
+        
+        # 돈 차감 (0원 이하로는 안 내려가게 설정)
+        new_money = max(0, current_money - damage_cost)
+        set_user_data(user_money, g_id, u_id, new_money)
+
+        embed = discord.Embed(
+            title="⚠️ 사냥 실패 및 부상", 
+            description=f"동물을 놓치고 상처를 입었습니다...\n치료비로 **{damage_cost:,}원**이 지출되었습니다.", 
+            color=0xe74c3c
+        )
+        embed.set_footer(text=f"현재 서버 잔고: {new_money:,}원")
+        await interaction.edit_original_response(content=None, embed=embed)
+
+@bot.tree.command(name="동물가격표", description="사냥할 수 있는 동물들의 가격과 난이도를 확인합니다.")
+async def 동물가격표(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="📜 사냥 동물 시세표",
+        description="희귀한 동물일수록 잡을 확률이 낮지만 훨씬 비쌉니다.",
+        color=0xf1c40f
+    )
+    
+    for name, info in HUNT_DATA.items():
+        # 확률에 따른 난이도 표시 (시각적 효과)
+        if info["chance"] >= 30: difficulty = "🟢 쉬움"
+        elif info["chance"] >= 15: difficulty = "🟡 보통"
+        else: difficulty = "🔴 어려움"
+        
+        embed.add_field(
+            name=name,
+            value=f"판매가: **{info['price']:,}원**\n난이도: {difficulty}",
+            inline=True
+        )
+    
+    embed.set_footer(text="주의: 사냥 실패 시 최대 1,000원의 치료비가 발생합니다.")
+    await interaction.response.send_message(embed=embed)
+
 # # =====================
 # 도박: 배팅 (서버별 독립 버전)
 # =====================
