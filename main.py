@@ -612,8 +612,8 @@ async def 낚시(interaction: discord.Interaction):
     except Exception as e:
         await interaction.edit_original_response(content=f"❌ 오류 발생: {e}")
 
-@bot.tree.command(name="가격표", description="물고기들의 판매 가격을 확인합니다.")
-async def 가격표(interaction: discord.Interaction):
+@bot.tree.command(name="물고기가격", description="물고기들의 판매 가격을 확인합니다.")
+async def 물고기가격(interaction: discord.Interaction):
     lines = [f"**{name}**: {info['price']:,}원" for name, info in FISH_DATA.items() if not info.get("is_trash")]
     trash = [f"**{name}**: 0원" for name, info in FISH_DATA.items() if info.get("is_trash")]
     
