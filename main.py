@@ -796,8 +796,8 @@ async def 사냥(interaction: discord.Interaction):
 
     else:
         # --- 사냥 실패 및 부상 로직 ---
-        # 100원에서 2000원 사이의 랜덤 부상 비용 발생
-        damage_cost = random.randint(100, 2000)
+        # 100원에서 1000원 사이의 랜덤 부상 비용 발생
+        damage_cost = random.randint(100, 1000)
         
         # 돈 차감 (0원 이하로는 안 내려가게 설정)
         new_money = max(0, current_money - damage_cost)
@@ -814,32 +814,41 @@ async def 사냥(interaction: discord.Interaction):
 @bot.tree.command(name="동물가격표", description="사냥할 수 있는 동물들의 가격과 난이도를 확인합니다.")
 async def 동물가격표(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="📜 사냥 동물 시세표",
+        title="📜 사냥 동물 시세표 (전체 60종)",
         description="희귀한 동물일수록 잡을 확률이 낮지만 훨씬 비쌉니다.\n" + "─" * 20,
         color=0xf1c40f
     )
     
-    # 40개를 한 번에 필드로 넣으면 터지므로, 문자열로 합쳐서 추가합니다.
-    # 혹은 필드를 20개씩 끊어서 여러 개의 임베드를 리스트로 보낼 수도 있습니다.
-    
-    pages = []
+    # 60개를 적절히 나누어 필드에 추가 (한 필드당 10~12개 정도가 가독성이 좋습니다)
     current_text = ""
+    field_count = 1
     
     for i, (name, info) in enumerate(HUNT_DATA.items()):
-        if info["chance"] >= 30: difficulty = "🟢 쉬움"
-        elif info["chance"] >= 15: difficulty = "🟡 보통"
-        else: difficulty = "🔴 어려움"
+        # 확률이 전반적으로 높아졌으므로 난이도 기준을 재설정합니다.
+        # 최하 확률이 20이므로, 그에 맞춰 범위를 조정했습니다.
+        if info["chance"] >= 100: 
+            difficulty = "🟢 쉬움"
+        elif info["chance"] >= 50: 
+            difficulty = "🟡 보통"
+        elif info["chance"] >= 30:
+            difficulty = "🟠 높음"
+        else: 
+            difficulty = "🔴 매우어려움"
         
         current_text += f"{name} | **{info['price']:,}원** | {difficulty}\n"
         
-        # 15개마다 내용을 끊어서 필드로 추가 (가독성 목적)
-        if (i + 1) % 15 == 0 or (i + 1) == len(HUNT_DATA):
-            embed.add_field(name="목록", value=current_text, inline=False)
+        # 12개마다 새로운 필드로 분리하여 가독성 확보
+        if (i + 1) % 12 == 0 or (i + 1) == len(HUNT_DATA):
+            embed.add_field(
+                name=f"목록 ({field_count}/5)", 
+                value=current_text, 
+                inline=False
+            )
             current_text = ""
+            field_count += 1
 
-    embed.set_footer(text="주의: 사냥 실패 시 치료비가 발생할 수 있습니다.")
+    embed.set_footer(text="주의: 사냥 실패 시 치료비가 발생할 수 있습니다. | 총 60종의 생명체가 서식 중")
     await interaction.response.send_message(embed=embed)
-
 # # =====================
 # 도박: 배팅 (서버별 독립 버전)
 # =====================
