@@ -229,18 +229,21 @@ async def on_ready():
         test_greeting.start()
 
 # =====================
-# 명령어: 오늘의운세 (슬래시 커맨드 버전)
+# 명령어: 오늘의운세 (서버별 독립 버전)
 # =====================
-@bot.tree.command(name="오늘의운세", description="하루에 한 번, 오늘의 행운을 확인하세요!")
+@bot.tree.command(name="오늘의운세", description="이 서버에서 하루에 한 번, 오늘의 행운을 확인하세요!")
 async def 오늘의운세(interaction: discord.Interaction):
     # 1. 정보 가져오기
-    user_id = interaction.user.id
-    today = now_kst().date()
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    today = str(now_kst().date())
 
-    # 2. 중복 체크
-    if user_id in user_fortune_data and user_fortune_data[user_id] == today:
+    # 2. 중복 체크 (서버별 데이터 함수 사용)
+    last_date = get_user_data(user_fortune_data, g_id, u_id, "")
+
+    if last_date == today:
         await interaction.response.send_message(
-            f"⚠️ {interaction.user.mention}님, 운세는 하루에 한 번만 볼 수 있어요!", 
+            f"⚠️ {interaction.user.mention}님, 이 서버에서 운세는 하루에 한 번만 볼 수 있어요!", 
             ephemeral=True
         )
         return
@@ -273,37 +276,38 @@ async def 오늘의운세(interaction: discord.Interaction):
     ]
 
     selected = random.choice(fortune_results)
-    user_fortune_data[user_id] = today
     
-    # 3. 임베드 생성 및 전송 (수정된 부분)
+    # 데이터 저장 (서버별로 저장)
+    set_user_data(user_fortune_data, g_id, u_id, today)
+    
+    # 3. 임베드 생성 및 전송
     embed = discord.Embed(title="🔮 오늘의 운세", description=selected, color=0xffd700)
-    # ctx.author.display_name 대신 interaction.user.display_name 사용
-    embed.set_footer(text=f"{interaction.user.display_name}님의 하루를 응원합니다!")
+    embed.set_footer(text=f"{interaction.user.display_name}님의 하루를 응원합니다! (서버 전용)")
     
-    # ctx.send 대신 interaction.response.send_message 사용
     await interaction.response.send_message(embed=embed)
 
 # =====================
-# 명령어: 궁합 (슬래시 커맨드 버전) 💘
+# 명령어: 궁합 (서버별 독립 버전) 💘
 # =====================
-@bot.tree.command(name="궁합", description="상대방과의 오늘의 궁합 점수를 확인합니다. (상대별 하루 1회)")
-async def 궁합(interaction: discord.Interaction, user: discord.Member): # 1. ctx 대신 interaction 사용, user를 인자로 받음
-    user_id = interaction.user.id
-    today = now_kst().date()
+@bot.tree.command(name="궁합", description="이 서버에서 상대방과의 오늘의 궁합 점수를 확인합니다.")
+async def 궁합(interaction: discord.Interaction, user: discord.Member):
+    g_id = interaction.guild.id
+    u_id = interaction.user.id
+    today = str(now_kst().date())
 
-    # 슬래시 커맨드는 'user'가 필수값이므로 None 체크는 생략 가능합니다.
     # 본인과의 궁합 체크
     if user == interaction.user:
         await interaction.response.send_message("😳 자기 자신과의 궁합은 언제나 100점! 다른 분을 선택해 보세요.", ephemeral=True)
         return
 
-    # 상대방 ID까지 포함해서 유니크한 키 생성
-    match_key = (user_id, user.id)
+    # 서버 ID + 사용자 ID + 상대방 ID를 조합한 유니크 키 생성
+    match_key = f"{g_id}_{u_id}_{user.id}"
 
     # 하루 1회 제한 체크 (특정 상대방 기준)
+    # user_match_data를 바로 쓰지 않고 유연하게 관리하기 위해 match_key 활용
     if match_key in user_match_data and user_match_data[match_key] == today:
         await interaction.response.send_message(
-            f"⚠️ {interaction.user.mention}님, {user.display_name}님과의 궁합은 이미 확인하셨어요! 내일 다시 봐요. 😉",
+            f"⚠️ {interaction.user.mention}님, 이 서버에서 {user.display_name}님과의 궁합은 이미 확인하셨어요!",
             ephemeral=True
         )
         return
@@ -360,14 +364,13 @@ async def 궁합(interaction: discord.Interaction, user: discord.Member): # 1. c
 
     selected_comment = random.choice(comments)
 
-    # 임베드 생성 (ctx 대신 interaction 사용하도록 수정)
-    embed = discord.Embed(title="💘 오늘의 궁합 (상대별 하루 한정!)", color=0xff69b4)
+    # 임베드 생성
+    embed = discord.Embed(title="💘 오늘의 궁합 (서버별 독립)", color=0xff69b4)
     embed.add_field(name="오늘의 파트너", value=f"{interaction.user.mention} ❤️ {user.mention}", inline=False)
     embed.add_field(name="오늘의 점수", value=f"**{score}점**", inline=False)
     embed.add_field(name="한줄평", value=f"> {selected_comment}", inline=False)
-    embed.set_footer(text=f"다른 유저와도 궁합을 볼 수 있습니다!")
+    embed.set_footer(text=f"현재 서버 기준 궁합입니다!")
     
-    # 2. 결과 전송 (interaction.response.send_message)
     await interaction.response.send_message(embed=embed)
 
 # =====================
