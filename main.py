@@ -684,48 +684,78 @@ async def 팔기(interaction: discord.Interaction, 물고기이름: str = None, 
 # 경제 시스템: 사냥 시스템
 # ===================== 
 
-# 사냥 동물 데이터 (총 40종, 최대 가격 30,000원 제한)
 HUNT_DATA = {
-    "🪰 파리": {"chance": 150, "price": 100},
-    "🦟 모기": {"chance": 140, "price": 200},
-    "🐜 개미": {"chance": 130, "price": 300},
-    "🐞 무당벌레": {"chance": 120, "price": 400},
-    "🐭 생쥐": {"chance": 110, "price": 600},
-    "🐦 참새": {"chance": 100, "price": 800},
-    "🐥 병아리": {"chance": 95, "price": 1000},
-    "🐿️ 다람쥐": {"chance": 90, "price": 1200},
-    "🐸 개구리": {"chance": 85, "price": 1500},
-    "🦎 도마뱀": {"chance": 80, "price": 1800},
-    "🐰 토끼": {"chance": 75, "price": 2200},
-    "🐥 오리": {"chance": 70, "price": 2800},
-    "🐓 수탉": {"chance": 65, "price": 3500},
-    "🦔 고슴도치": {"chance": 60, "price": 4200},
-    "🐱 길고양이": {"chance": 55, "price": 5000},
-    "🐕 들개": {"chance": 50, "price": 6000},
-    "🦝 너구리": {"chance": 45, "price": 7200},
-    "🦡 오소리": {"chance": 40, "price": 8500},
-    " Foxes 여우": {"chance": 35, "price": 10000},
-    "🦌 사슴": {"chance": 30, "price": 11500},
-    "🐗 멧돼지": {"chance": 28, "price": 13000},
-    "🐍 뱀": {"chance": 25, "price": 14500},
-    "🦃 칠면조": {"chance": 22, "price": 16000},
-    "🦅 독수리": {"chance": 20, "price": 17500},
-    "🐺 늑대": {"chance": 18, "price": 19000},
-    "🦭 물개": {"chance": 15, "price": 21000},
-    "🐆 표범": {"chance": 12, "price": 23000},
-    "🐊 악어": {"chance": 10, "price": 25000},
-    "🐻 곰": {"chance": 8, "price": 27000},
-    "🐃 버팔로": {"chance": 7, "price": 28500},
-    "🦏 코뿔소": {"chance": 6, "price": 29000},
-    "🦍 고릴라": {"chance": 5, "price": 29500},
-    "🐯 호랑이": {"chance": 4, "price": 29800},
-    "🦁 사자": {"chance": 3, "price": 30000},
-    "🐘 코끼리": {"chance": 2, "price": 30000},
-    "🦖 공룡": {"chance": 1, "price": 30000},
-    "🦄 유니콘": {"chance": 0.8, "price": 30000},
-    "🔥 피닉스": {"chance": 0.5, "price": 30000},
-    "🐉 용": {"chance": 0.3, "price": 30000},
-    "✨ 해태": {"chance": 0.1, "price": 30000}
+    # --- [1단계: 흔한 소형 생물] ---
+    "🪰 파리": {"chance": 400, "price": 100},
+    "🦟 모기": {"chance": 380, "price": 200},
+    "🐜 개미": {"chance": 360, "price": 300},
+    "🐞 무당벌레": {"chance": 340, "price": 400},
+    "🦗 귀뚜라미": {"chance": 320, "price": 500}, # 추가
+    "🐭 생쥐": {"chance": 300, "price": 600},
+    "🕷️ 거미": {"chance": 280, "price": 700}, # 추가
+    "🐦 참새": {"chance": 260, "price": 800},
+    "🐌 달팽이": {"chance": 240, "price": 900}, # 추가
+    "🐥 병아리": {"chance": 220, "price": 1000},
+
+    # --- [2단계: 야생 소형 동물] ---
+    "🐿️ 다람쥐": {"chance": 200, "price": 1200},
+    "🐸 개구리": {"chance": 190, "price": 1500},
+    "🦎 도마뱀": {"chance": 180, "price": 1800},
+    "🦇 박쥐": {"chance": 170, "price": 2000}, # 추가
+    "🐰 토끼": {"chance": 160, "price": 2200},
+    "🐢 거북이": {"chance": 150, "price": 2500}, # 추가
+    "🐥 오리": {"chance": 145, "price": 2800},
+    "🕊️ 비둘기": {"chance": 140, "price": 3000}, # 추가
+    "🐓 수탉": {"chance": 135, "price": 3500},
+    "🦔 고슴도치": {"chance": 130, "price": 4200},
+
+    # --- [3단계: 중형 야생 동물] ---
+    "🐱 길고양이": {"chance": 120, "price": 5000},
+    "🐒 원숭이": {"chance": 115, "price": 5500}, # 추가
+    "🐕 들개": {"chance": 110, "price": 6000},
+    "🦦 수달": {"chance": 105, "price": 6600}, # 추가
+    "🦝 너구리": {"chance": 100, "price": 7200},
+    "🦡 오소리": {"chance": 95, "price": 8500},
+    "🦩 홍학": {"chance": 90, "price": 9200}, # 추가
+    "🦊 여우": {"chance": 85, "price": 10000},
+    "🦌 사슴": {"chance": 80, "price": 11500},
+    "🐗 멧돼지": {"chance": 78, "price": 13000},
+
+    # --- [4단계: 위험한 포식자] ---
+    "🐍 뱀": {"chance": 75, "price": 14500},
+    "🦃 칠면조": {"chance": 72, "price": 16000},
+    "🦅 독수리": {"chance": 70, "price": 17500},
+    "🦉 부엉이": {"chance": 68, "price": 18000}, # 추가
+    "🐺 늑대": {"chance": 65, "price": 19000},
+    "🦂 전갈": {"chance": 62, "price": 20000}, # 추가
+    "🦭 물개": {"chance": 60, "price": 21000},
+    "🐆 표범": {"chance": 58, "price": 23000},
+    "🦓 얼룩말": {"chance": 55, "price": 24000}, # 추가
+    "🐊 악어": {"chance": 52, "price": 25000},
+
+    # --- [5단계: 대형 맹수 & 희귀종] ---
+    "🐻 곰": {"chance": 50, "price": 27000},
+    "🐃 버팔로": {"chance": 48, "price": 28500},
+    "🐫 낙타": {"chance": 46, "price": 28800}, # 추가
+    "🦏 코뿔소": {"chance": 44, "price": 29000},
+    "🐋 고래": {"chance": 42, "price": 29200}, # 추가
+    "🦍 고릴라": {"chance": 40, "price": 29500},
+    "🦒 기린": {"chance": 38, "price": 29600}, # 추가
+    "🐯 호랑이": {"chance": 36, "price": 29800},
+    "🦁 사자": {"chance": 34, "price": 30000},
+    "🐘 코끼리": {"chance": 32, "price": 30000},
+
+    # --- [6단계: 환상 속의 영수] ---
+    "🦖 공룡": {"chance": 30, "price": 30000},
+    "🦕 브라키오": {"chance": 28, "price": 30000}, # 추가
+    "🦄 유니콘": {"chance": 26, "price": 30000},
+    "🐺 펜릴": {"chance": 25, "price": 30000}, # 추가
+    "🔥 피닉스": {"chance": 24, "price": 30000},
+    "🧜 인어": {"chance": 23, "price": 30000}, # 추가
+    "🐉 용": {"chance": 22, "price": 30000},
+    "🦁 키메라": {"chance": 21, "price": 30000}, # 추가
+    "✨ 해태": {"chance": 20.5, "price": 30000},
+    "👑 그리핀": {"chance": 20, "price": 30000} # 추가
 }
 
 @bot.tree.command(name="사냥", description="야생 동물을 사냥하여 돈을 법니다. (부상 주의!)")
