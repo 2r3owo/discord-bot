@@ -1343,6 +1343,9 @@ async def on_ready():
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
 # =====================
 
+import discord
+import traceback
+
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
     if not interaction.user.voice:
@@ -1352,22 +1355,38 @@ async def 야드루와(interaction: discord.Interaction):
         )
 
     try:
-        if interaction.guild.voice_client:
-            if interaction.guild.voice_client.channel != interaction.user.voice.channel:
-                await interaction.guild.voice_client.move_to(
+        voice_client = interaction.guild.voice_client
+
+        if voice_client:
+            if voice_client.channel != interaction.user.voice.channel:
+                await voice_client.move_to(
                     interaction.user.voice.channel
                 )
         else:
             await interaction.user.voice.channel.connect()
 
-        await interaction.response.send_message("🎧 들어왔어요!")
+        await interaction.response.send_message(
+            "🎧 들어왔어요!"
+        )
 
     except Exception as e:
+        print("\n===== 음성 연결 오류 =====")
         traceback.print_exc()
+        print("========================\n")
+
+        error_msg = (
+            f"❌ 오류 종류: {type(e).__name__}\n"
+            f"❌ 오류 내용: {str(e)}"
+        )
 
         if not interaction.response.is_done():
             await interaction.response.send_message(
-                f"❌ 오류 종류: {type(e).__name__}\n❌ 오류 내용: {e}",
+                error_msg,
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                error_msg,
                 ephemeral=True
             )
 
