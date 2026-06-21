@@ -13,10 +13,6 @@ import traceback
 import os
 import ffmpeg_downloader as ffd
 
-# Railway 서버 환경에 FFmpeg 프로그램을 강제로 설치하고 경로를 연결하는 코드입니다.
-ffmpeg_path = ffd.ffmpeg_path()
-os.environ["PATH"] += os.pathsep + os.path.dirname(ffmpeg_path)
-
 print("=" * 50)
 print("Python:", sys.version)
 print("Executable:", sys.executable)
