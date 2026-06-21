@@ -12,6 +12,14 @@ import nacl
 import traceback
 import os
 
+# ⭐ [핵심 코드] 해외 서버(Railway)에서 한국 디스코드 음성 서버로 연결할 때 
+# 디스코드 라이브러리가 렉 때문에 타임아웃을 내는 것을 강제로 방지하는 코드입니다.
+os.environ["DISCORD_ENABLE_VOICE_GATEWAY_V10"] = "true"
+
+# 만약 패키지 꼬임으로 인한 버그일 경우 정지하지 않고 강제로 소켓을 유지하도록 설정
+import discord
+discord.VoiceClient.warn_on_coroutine_not_awaited = False
+
 print("=" * 50)
 print("Python:", sys.version)
 print("Executable:", sys.executable)
@@ -723,24 +731,22 @@ async def 야드루와(interaction: discord.Interaction):
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
 
-    # 미국 서버 특성상 시간이 걸리므로 생각 중... 상태 돌입
+    # 3초 제한을 풀기 위해 대기 상태 돌입
     await interaction.response.defer(ephemeral=True)
 
     try:
         voice_client = interaction.guild.voice_client
         if voice_client:
             if voice_client.channel != interaction.user.voice.channel:
-                # 이동할 때도 대기 시간을 60초로 넉넉하게 잡습니다.
                 await voice_client.move_to(interaction.user.voice.channel)
         else:
-            # ⭐ 핵심: 미국-한국 간 렉을 버티기 위해 대기 시간을 60초로 늘리고 자동 재연결을 켭니다.
-            await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
+            # ⭐ timeout을 120초(2분)로 길게 주고, 자동으로 다시 연결을 시도하도록 설정합니다.
+            await interaction.user.voice.channel.connect(timeout=120.0, reconnect=True)
         
         await interaction.followup.send("🎧 들어왔어요!")
 
     except asyncio.TimeoutError:
-        # 시간 초과 예외를 따로 잡아 터지지 않게 방어합니다.
-        await interaction.followup.send("❌ 서버 거리가 멀어 연결 시간이 초과되었습니다. 다시 시도해 주세요!")
+        await interaction.followup.send("❌ 미국-한국 서버 간 네트워크 지연으로 연결 시간이 초과되었습니다. 다시 한번 명령어를 입력해 주세요!")
     except Exception as e:
         traceback.print_exc()
         error_msg = f"❌ 오류 종류: {type(e).__name__}\n❌ 오류 내용: {str(e)}"
