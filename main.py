@@ -27,8 +27,7 @@ def now_kst():
 # =====================
 # 설정 부분
 # =====================
-TOKEN = "여기에_디스코드_봇_토큰_붙여넣기"
-print("TOKEN =", TOKEN)
+TOKEN = os.getenv('DISCORD_TOKEN') 
 CHANNEL_ID = None
 
 intents = discord.Intents.default()
