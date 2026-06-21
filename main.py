@@ -732,18 +732,27 @@ import asyncio
 import traceback
 import asyncio
 import os
+import sys
 from collections import deque
 
-# 🔍 안전하게 유튜브 쿠키 및 재생 옵션을 완전히 새로 정의합니다.
+# 🔍 유튜브 쿠키 및 재생 옵션 설정
 current_dir = os.path.dirname(os.path.abspath(__file__))
 cookie_path = os.path.join(current_dir, 'cookies.txt')
 
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
-    'cookiefile': cookie_path,  # 쿠키 파일의 경로를 절대 경로로 정확히 지정
+    'cookiefile': cookie_path,
     'quiet': True
 }
+
+# 🔍 Railway 서버 환경과 내 컴퓨터 환경에 맞춰 ffmpeg 실행 경로를 자동으로 선택합니다.
+if sys.platform.startswith('win'):
+    # 내 컴퓨터(윈도우)일 때는 bin 폴더 안의 ffmpeg.exe 사용
+    FFMPEG_EXE = os.path.join(current_dir, 'ffmpeg.exe')
+else:
+    # Railway(리눅스) 서버 환경일 때는 서버 시스템 자체의 ffmpeg 사용
+    FFMPEG_EXE = 'ffmpeg'
 
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
@@ -801,7 +810,8 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         if interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.stop()
         
-        source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+        # ⚡ executable 부분을 유연하게 대처하도록 수정했습니다.
+        source = await discord.FFmpegOpusAudio.from_probe(url, executable=FFMPEG_EXE, **FFMPEG_OPTIONS)
         interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
     except Exception as e:
@@ -832,7 +842,8 @@ async def 야기다려(interaction: discord.Interaction, search: str):
             queues[interaction.guild.id].append({'url': url, 'title': title})
             await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
         else:
-            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+            # ⚡ 여기도 똑같이 대처하도록 수정했습니다.
+            source = await discord.FFmpegOpusAudio.from_probe(url, executable=FFMPEG_EXE, **FFMPEG_OPTIONS)
             interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
             await interaction.followup.send(f"🎶 재생 시작: **{title}**")
     except Exception as e:
@@ -863,7 +874,6 @@ async def 야목록(interaction: discord.Interaction):
         await interaction.response.send_message(msg)
     else:
         await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
-
 # =====================
 # 명령어: 야청소해
 # =====================
