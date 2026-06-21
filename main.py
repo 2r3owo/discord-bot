@@ -714,10 +714,16 @@ async def 중단(interaction: discord.Interaction):
 # =====================
 # 음성 및 노래 재생 관련
 # =====================
+import traceback
+
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
+    # 1. 음성 채널에 없는 경우는 즉시 처리 가능하므로 바로 응답 (3초 미만 소요)
     if not interaction.user.voice:
         return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
+
+    # 2. 음성 채널 연결은 시간이 걸릴 수 있으므로 디스코드에게 시간 연장 요청! ("봇이 생각 중..." 상태가 됩니다)
+    await interaction.response.defer(ephemeral=True)
 
     try:
         voice_client = interaction.guild.voice_client
@@ -726,11 +732,15 @@ async def 야드루와(interaction: discord.Interaction):
                 await voice_client.move_to(interaction.user.voice.channel)
         else:
             await interaction.user.voice.channel.connect()
-        await interaction.response.send_message("🎧 들어왔어요!")
+        
+        # ⭐ 중요: defer()를 썼을 때는 send_message 대신 followup.send를 사용해야 합니다.
+        await interaction.followup.send("🎧 들어왔어요!")
+
     except Exception as e:
         traceback.print_exc()
         error_msg = f"❌ 오류 종류: {type(e).__name__}\n❌ 오류 내용: {str(e)}"
-        await interaction.response.send_message(error_msg, ephemeral=True)
+        # ⭐ 에러 발생 시에도 마찬가지로 followup.send를 사용합니다.
+        await interaction.followup.send(error_msg)
 
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
 async def 야꺼져(interaction: discord.Interaction):
