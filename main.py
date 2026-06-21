@@ -8,6 +8,7 @@ from collections import deque
 from datetime import datetime, timezone, timedelta
 import sys
 import nacl
+import traceback
 
 print("=" * 50)
 print("Python:", sys.version)
@@ -1345,25 +1346,30 @@ async def on_ready():
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
     if not interaction.user.voice:
-        return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ 먼저 음성채널에 들어가 주세요",
+            ephemeral=True
+        )
 
     try:
         if interaction.guild.voice_client:
             if interaction.guild.voice_client.channel != interaction.user.voice.channel:
-                await interaction.guild.voice_client.move_to(interaction.user.voice.channel)
+                await interaction.guild.voice_client.move_to(
+                    interaction.user.voice.channel
+                )
         else:
-            await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
-        await interaction.response.send_message("🎧 들어왔어요!")
-    except Exception as e:
-        await interaction.response.send_message(f"❌ 접속 중 오류 발생: {e}", ephemeral=True)
+            await interaction.user.voice.channel.connect()
 
-@bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
-async def 야꺼져(interaction: discord.Interaction):
-    if interaction.guild.voice_client:
-        await interaction.guild.voice_client.disconnect()
-        await interaction.response.send_message("👋 나갈게요!")
-    else:
-        await interaction.response.send_message("❌ 저는 지금 음성 채널에 있지 않아요.", ephemeral=True)
+        await interaction.response.send_message("🎧 들어왔어요!")
+
+    except Exception as e:
+        traceback.print_exc()
+
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                f"❌ 오류 종류: {type(e).__name__}\n❌ 오류 내용: {e}",
+                ephemeral=True
+            )
 
 @bot.tree.command(name="야재생해", description="현재 곡을 중단하고 새로운 곡을 즉시 재생합니다.")
 async def 야재생해(interaction: discord.Interaction, search: str):
