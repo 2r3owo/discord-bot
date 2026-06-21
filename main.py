@@ -11,7 +11,6 @@ import sys
 import nacl
 import traceback
 import os
-import ffmpeg_downloader as ffd
 
 print("=" * 50)
 print("Python:", sys.version)
