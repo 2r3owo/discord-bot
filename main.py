@@ -726,6 +726,25 @@ async def 중단(interaction: discord.Interaction):
 import traceback
 import asyncio
 
+# =====================
+# 음성 및 노래 재생 관련
+# =====================
+import traceback
+import asyncio
+import os
+from collections import deque
+
+# 🔍 안전하게 유튜브 쿠키 및 재생 옵션을 완전히 새로 정의합니다.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+cookie_path = os.path.join(current_dir, 'cookies.txt')
+
+YDL_OPTIONS = {
+    'format': 'bestaudio/best',
+    'noplaylist': True,
+    'cookiefile': cookie_path,  # 쿠키 파일의 경로를 절대 경로로 정확히 지정
+    'quiet': True
+}
+
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
     if not interaction.user.voice:
