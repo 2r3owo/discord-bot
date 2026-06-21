@@ -6,6 +6,14 @@ import asyncio
 import os
 from collections import deque
 from datetime import datetime, timezone, timedelta
+import sys
+import nacl
+
+print("=" * 50)
+print("Python:", sys.version)
+print("Executable:", sys.executable)
+print("PyNaCl:", nacl.__version__)
+print("=" * 50)
 
 # 초성을 추출하는 함수
 def get_chosung(text):
