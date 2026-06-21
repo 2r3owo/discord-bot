@@ -725,33 +725,26 @@ async def 중단(interaction: discord.Interaction):
 # =====================
 import traceback
 import asyncio
-
-# =====================
-# 음성 및 노래 재생 관련
-# =====================
-import traceback
-import asyncio
 import os
 import sys
 from collections import deque
 
-# 🔍 유튜브 쿠키 및 재생 옵션 설정
-current_dir = os.path.dirname(os.path.abspath(__file__))
-cookie_path = os.path.join(current_dir, 'cookies.txt')
+# 🔍 [핵심 수정] 어떤 환경에서 실행되든 cookies.txt 파일의 절대 경로를 강제로 고정합니다.
+# main.py와 cookies.txt가 같은 폴더에 있으므로 아래 공식이 가장 정확합니다.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+COOKIE_FILE_PATH = os.path.join(BASE_DIR, "cookies.txt")
 
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
-    'cookiefile': cookie_path,
+    'cookiefile': COOKIE_FILE_PATH,  # 강제로 절대 경로 주입
     'quiet': True
 }
 
-# 🔍 Railway 서버 환경과 내 컴퓨터 환경에 맞춰 ffmpeg 실행 경로를 자동으로 선택합니다.
+# 🔍 Railway 서버 환경과 내 컴퓨터 환경에 맞춰 ffmpeg 실행 경로 설정
 if sys.platform.startswith('win'):
-    # 내 컴퓨터(윈도우)일 때는 bin 폴더 안의 ffmpeg.exe 사용
-    FFMPEG_EXE = os.path.join(current_dir, 'ffmpeg.exe')
+    FFMPEG_EXE = os.path.join(BASE_DIR, 'ffmpeg.exe')
 else:
-    # Railway(리눅스) 서버 환경일 때는 서버 시스템 자체의 ffmpeg 사용
     FFMPEG_EXE = 'ffmpeg'
 
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
@@ -810,7 +803,6 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         if interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.stop()
         
-        # ⚡ executable 부분을 유연하게 대처하도록 수정했습니다.
         source = await discord.FFmpegOpusAudio.from_probe(url, executable=FFMPEG_EXE, **FFMPEG_OPTIONS)
         interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
@@ -842,7 +834,6 @@ async def 야기다려(interaction: discord.Interaction, search: str):
             queues[interaction.guild.id].append({'url': url, 'title': title})
             await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
         else:
-            # ⚡ 여기도 똑같이 대처하도록 수정했습니다.
             source = await discord.FFmpegOpusAudio.from_probe(url, executable=FFMPEG_EXE, **FFMPEG_OPTIONS)
             interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
             await interaction.followup.send(f"🎶 재생 시작: **{title}**")
