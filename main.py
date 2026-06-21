@@ -728,23 +728,25 @@ import os
 import sys
 from collections import deque
 
-# 🔍 [핵심 수정] 어떤 환경에서 실행되든 cookies.txt 파일의 절대 경로를 강제로 고정합니다.
-# main.py와 cookies.txt가 같은 폴더에 있으므로 아래 공식이 가장 정확합니다.
+# 🔍 현재 파일(main.py)이 있는 위치를 기준으로 cookies.txt 절대 경로 계산
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 COOKIE_FILE_PATH = os.path.join(BASE_DIR, "cookies.txt")
 
-YDL_OPTIONS = {
-    'format': 'bestaudio/best',
-    'noplaylist': True,
-    'cookiefile': COOKIE_FILE_PATH,  # 강제로 절대 경로 주입
-    'quiet': True
-}
-
-# 🔍 Railway 서버 환경과 내 컴퓨터 환경에 맞춰 ffmpeg 실행 경로 설정
+# 🔍 시스템(윈도우/리눅스)에 맞춰 ffmpeg 실행 경로 설정
 if sys.platform.startswith('win'):
     FFMPEG_EXE = os.path.join(BASE_DIR, 'ffmpeg.exe')
 else:
     FFMPEG_EXE = 'ffmpeg'
+
+# 🔍 [핵심] YDL_OPTIONS 안에 직접 경로를 텍스트로 박아주어 절대 에러가 나지 않습니다.
+YDL_OPTIONS = {
+    'format': 'bestaudio/best',
+    'noplaylist': True,
+    'cookiefile': COOKIE_FILE_PATH,
+    'quiet': True,
+    'no_warnings': True,
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
 
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
@@ -760,7 +762,6 @@ async def 야드루와(interaction: discord.Interaction):
             if voice_client.channel != interaction.user.voice.channel:
                 await voice_client.move_to(interaction.user.voice.channel)
         else:
-            # ⭐ timeout을 120초(2분)로 길게 주고, 자동으로 다시 연결을 시도하도록 설정합니다.
             await interaction.user.voice.channel.connect(timeout=120.0, reconnect=True)
         
         await interaction.followup.send("🎧 들어왔어요!")
@@ -864,34 +865,6 @@ async def 야목록(interaction: discord.Interaction):
         await interaction.response.send_message(msg)
     else:
         await interaction.response.send_message("📁 대기열이 비어 있습니다.", ephemeral=True)
-# =====================
-# 명령어: 야청소해
-# =====================
-@bot.tree.command(name="야청소해", description="메시지를 지정한 개수만큼 삭제합니다.")
-@app_commands.describe(amount="삭제할 메시지 개수 또는 '전부' 입력")
-@app_commands.checks.has_permissions(manage_messages=True)
-async def 청소(interaction: discord.Interaction, amount: str):
-    if amount == "전부":
-        limit = 999
-    else:
-        try:
-            limit = int(amount)
-            if limit <= 0:
-                return await interaction.response.send_message("❌ 1개 이상의 숫자를 입력해야 합니다.", ephemeral=True)
-            if limit > 999: limit = 999 
-        except ValueError:
-            return await interaction.response.send_message("❌ 숫자를 입력하거나 '전부'라고 입력해 주세요.", ephemeral=True)
-
-    await interaction.response.defer(ephemeral=True)
-    deleted = await interaction.channel.purge(limit=limit)
-    await interaction.followup.send(f"🧹 **{len(deleted)}개**의 메시지를 깨끗하게 치웠어요!", ephemeral=True)
-
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingPermissions):
-        await interaction.response.send_message("🚫 이 명령어를 사용하려면 **메시지 관리** 권한이 필요합니다!", ephemeral=True)
-    else:
-        print(f"Error: {error}")
 
 # =====================
 # 명령어: 야도와줘 (슬래시 커맨드 통합 가이드)
