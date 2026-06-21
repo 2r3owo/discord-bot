@@ -27,7 +27,7 @@ def now_kst():
 # =====================
 # 설정 부분
 # =====================
-TOKEN = os.getenv('DISCORD_TOKEN')
+TOKEN = "여기에_디스코드_봇_토큰_붙여넣기"
 print("TOKEN =", TOKEN)
 CHANNEL_ID = None
 
