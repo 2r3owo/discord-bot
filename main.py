@@ -1488,3 +1488,4 @@ async def help_command(interaction: discord.Interaction):
 # 실행
 # =====================
 bot.run(TOKEN)
+
