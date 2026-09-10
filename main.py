@@ -1,4 +1,4 @@
-import discord
+
 from discord.ext import commands, tasks
 import random
 import yt_dlp
@@ -38,12 +38,8 @@ def now_kst():
 # =====================
 # 설정 부분
 # =====================
-TOKEN = os.getenv('DISCORD_TOKEN')
+TOKEN = os.getenv('DISCORD_TOKEN') 
 CHANNEL_ID = None
-
-# 그림판 웹서버 설정 (Railway에서는 PORT를 자동으로 지정합니다.)
-PORT = int(os.getenv("PORT", "8080"))
-DRAW_URL = os.getenv("DRAW_URL", "http://localhost:8080").rstrip("/")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -136,6 +132,25 @@ def now_kst():
 # =====================
 def now_kst():
     return datetime.now(timezone(timedelta(hours=9)))
+
+# =====================
+# 봇 준비 완료 시 루프 시작
+# =====================
+@bot.event
+async def on_ready():
+    print(f"✅ 봇 로그인 완료: {bot.user}")
+
+    if not morning.is_running():
+        morning.start()
+
+    if not lunch.is_running():
+        lunch.start()
+
+    if not dinner.is_running():
+        dinner.start()
+
+    if not test_greeting.is_running():
+        test_greeting.start()
 
 # =====================
 # 명령어: 오늘의운세 (서버별 독립 버전)
@@ -801,17 +816,49 @@ async def 도박(interaction: discord.Interaction, bet: int):
             f"💰 현재 **이 서버** 잔고: {new_money:,}원"
         )
 
-
 # =====================
-# 봇 준비 완료 (단일 on_ready)
+# 명령어: 퍼니퀴즈
 # =====================
+# 1. 봇이 켜질 때 슬래시 명령어를 디스코드에 등록하는 설정
 @bot.event
 async def on_ready():
     try:
         synced = await bot.tree.sync()
-        print(f"✅ {bot.user} 연결 완료! {len(synced)}개 명령어 동기화됨")
+        print(f"{bot.user.name} 연결 완료!")
+        print(f"동기화된 명령어 개수: {len(synced)}개")
     except Exception as e:
-        print(f"❌ 슬래시 명령어 동기화 중 오류: {e}")
+        print(f"동기화 중 오류 발생: {e}")
+
+
+# =====================
+# 명령어: 야그만해 (서버별 독립 버전)
+# =====================
+@bot.tree.command(name="야그만해", description="이 서버에서 진행 중인 퀴즈를 중단합니다.")
+async def 중단(interaction: discord.Interaction):
+    g_id = interaction.guild_id
+    if active_games.get(g_id):
+        active_games[g_id] = False
+        await interaction.response.send_message("🛑 이 서버의 게임 중단 요청을 완료했습니다.")
+    else:
+        await interaction.response.send_message("❓ 현재 이 서버에서 진행 중인 게임이 없습니다.", ephemeral=True)
+
+# =====================
+# 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
+# =====================
+@bot.event
+async def on_ready():
+    # 슬래시 커맨드 동기화
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ {bot.user.name} 연결 완료! {len(synced)}개 명령어 동기화됨")
+    except Exception as e:
+        print(f"❌ 동기화 중 오류: {e}")
+
+    # 인사 스케줄러 실행 (기존에 정의하신 morning, lunch 등)
+    if not morning.is_running(): morning.start()
+    if not lunch.is_running(): lunch.start()
+    if not dinner.is_running(): dinner.start()
+    if not test_greeting.is_running(): test_greeting.start()
 
 # =====================
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
@@ -1008,8 +1055,7 @@ async def help_command(interaction: discord.Interaction):
               "`/보관함`: 이 서버에서 잡은 내 물고기 목록을 봅니다.\n"
               "`/가격표`: 어떤 물고기가 비싼지 시세를 확인합니다. (신규)\n"
               "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)"
-              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n"
-               "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n",
+              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n",
         inline=False
     )
 
@@ -1748,6 +1794,31 @@ async def draw(interaction: discord.Interaction):
         view=DrawView(url)
     )
 
+
+
+@bot.tree.command(name="그림대회", description="그림대회용 그림판을 엽니다.")
+async def drawing_contest(interaction: discord.Interaction):
+    if interaction.guild_id is None:
+        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
+
+    session_id = new_session(
+        interaction.user.id,
+        interaction.guild_id,
+        interaction.channel_id
+    )
+    url = f"{DRAW_URL}/?session={session_id}&contest=1"
+
+    embed = discord.Embed(
+        title="🏆 그림대회",
+        description=(
+            "아래 버튼을 눌러 그림대회용 그림판을 열어주세요!\n\n"
+            "완성한 뒤 **'완료해서 올리기'**를 누르면 이 채널에 그림이 올라옵니다."
+        ),
+        color=discord.Color.gold()
+    )
+    await interaction.response.send_message(embed=embed, view=DrawView(url))
+
+
 # =====================
 # 그림판 웹서버 실행
 # =====================
@@ -1755,6 +1826,18 @@ def run_flask():
     app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
 
 threading.Thread(target=run_flask, daemon=True).start()
+
+
+# =====================
+# 최종 봇 준비 완료 / 슬래시 명령어 동기화
+# =====================
+@bot.event
+async def on_ready():
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ {bot.user} 연결 완료! {len(synced)}개 명령어 동기화됨")
+    except Exception as e:
+        print(f"❌ 슬래시 명령어 동기화 중 오류: {e}")
 
 # =====================
 # 실행
