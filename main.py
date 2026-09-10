@@ -1823,31 +1823,6 @@ async def draw(interaction: discord.Interaction):
     )
 
 
-@tree.command(name="그림대회", description="그림대회용 그림판을 엽니다.")
-async def drawing_contest(interaction: discord.Interaction):
-    session_id = new_session(
-        interaction.user.id,
-        interaction.guild_id,
-        interaction.channel_id
-    )
-
-    url = f"{DRAW_URL}/?session={session_id}"
-
-    embed = discord.Embed(
-        title="🏆 그림대회 그림판",
-        description=(
-            "주제를 정한 뒤 이 그림판에서 그림을 그려보세요!\n"
-            "완성 후 **완료해서 올리기**를 누르면 이 채널에 전시됩니다."
-        ),
-        color=discord.Color.gold()
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=DrawView(url)
-    )
-
-
 @bot.event
 async def on_ready():
     try:
