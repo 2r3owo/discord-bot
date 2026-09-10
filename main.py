@@ -1,4 +1,4 @@
-import discord
+
 from discord.ext import commands, tasks
 import random
 import yt_dlp
@@ -87,8 +87,19 @@ queues = {}
 YT_COOKIE_PATH = "/tmp/youtube_cookies.txt"
 
 def setup_youtube_cookies():
-    # 1순위: Railway Secret/Variable에 Base64로 넣은 쿠키
-    cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
+    # 1순위: Railway Variables에 여러 조각으로 나눈 Base64 쿠키
+    # 예: YOUTUBE_COOKIES_B64_1, YOUTUBE_COOKIES_B64_2, YOUTUBE_COOKIES_B64_3 ...
+    cookie_parts = []
+    i = 1
+    while True:
+        part = os.getenv(f"YOUTUBE_COOKIES_B64_{i}", "").strip()
+        if not part:
+            break
+        cookie_parts.append(part)
+        i += 1
+
+    # 기존 YOUTUBE_COOKIES_B64도 계속 지원
+    cookies_b64 = "".join(cookie_parts) if cookie_parts else os.getenv("YOUTUBE_COOKIES_B64", "").strip()
     if cookies_b64:
         try:
             cookie_bytes = base64.b64decode(cookies_b64, validate=True)
@@ -893,46 +904,18 @@ async def 중단(interaction: discord.Interaction):
 
 @bot.tree.command(name="야드루와", description="봇을 현재 음성 채널에 참여시킵니다.")
 async def 야드루와(interaction: discord.Interaction):
-    # 음성 채널 확인
-    if not interaction.user.voice or not interaction.user.voice.channel:
-        return await interaction.response.send_message(
-            "❌ 먼저 음성채널에 들어가 주세요.",
-            ephemeral=True
-        )
-
-    # 음성 연결은 3초를 넘길 수 있으므로 먼저 응답을 예약합니다.
-    await interaction.response.defer()
-
-    channel = interaction.user.voice.channel
+    if not interaction.user.voice:
+        return await interaction.response.send_message("❌ 먼저 음성채널에 들어가 주세요", ephemeral=True)
 
     try:
-        voice_client = interaction.guild.voice_client
-
-        if voice_client:
-            # 이미 다른 음성채널에 있으면 현재 사용자의 채널로 이동
-            if voice_client.channel != channel:
-                await voice_client.move_to(channel)
+        if interaction.guild.voice_client:
+            if interaction.guild.voice_client.channel != interaction.user.voice.channel:
+                await interaction.guild.voice_client.move_to(interaction.user.voice.channel)
         else:
-            # 실제 음성채널 연결
-            voice_client = await channel.connect(timeout=60.0, reconnect=True)
-
-        # 실제 연결 여부 확인
-        if interaction.guild.voice_client and interaction.guild.voice_client.channel:
-            await interaction.followup.send(
-                f"🎧 **{interaction.guild.voice_client.channel.name}**에 들어왔어요!"
-            )
-        else:
-            await interaction.followup.send(
-                "❌ 음성채널 연결은 시도했지만 실제 연결 상태를 확인하지 못했어요.",
-                ephemeral=True
-            )
-
+            await interaction.user.voice.channel.connect(timeout=60.0, reconnect=True)
+        await interaction.response.send_message("🎧 들어왔어요!")
     except Exception as e:
-        print(f"❌ 음성채널 연결 오류: {type(e).__name__}: {e}")
-        await interaction.followup.send(
-            f"❌ 음성채널 접속 중 오류가 발생했어요.\n`{type(e).__name__}: {e}`",
-            ephemeral=True
-        )
+        await interaction.response.send_message(f"❌ 접속 중 오류 발생: {e}", ephemeral=True)
 
 @bot.tree.command(name="야꺼져", description="봇을 음성 채널에서 퇴장시킵니다.")
 async def 야꺼져(interaction: discord.Interaction):
