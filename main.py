@@ -165,26 +165,36 @@ YDL_OPTIONS = {
     'default_search': 'auto',
     'nocheckcertificate': True,
 
-    # YouTube의 현재 PO Token 정책에서 web_embedded는 GVS PO Token이 필요 없는
-    # 클라이언트입니다. 일반 웹 클라이언트 대신 이 클라이언트만 사용합니다.
+    # YouTube 최신 PO Token 방식:
+    # Railway 컨테이너 안에서 bgutil provider가 127.0.0.1:4416에서
+    # PO Token을 만들어 주고, yt-dlp의 mweb 클라이언트가 이를 사용합니다.
     'extractor_args': {
         'youtube': {
-            'player_client': ['web_embedded'],
+            'player_client': ['mweb'],
+            'youtubepot-bgutilhttp': {
+                'base_url': os.getenv(
+                    'YTDLP_POT_PROVIDER_URL',
+                    'http://127.0.0.1:4416'
+                ),
+            },
         }
     },
 
-    # YouTube의 최신 JS challenge(EJS)를 사용할 수 있도록 GitHub에서 로드합니다.
+    # YouTube 최신 JS challenge(EJS)를 사용할 수 있도록 GitHub에서 로드합니다.
     'remote_components': {'ejs:github'},
     'js_runtimes': {'deno': {}},
 }
 
-# web_embedded는 계정 쿠키 없이 사용할 수 있으므로 여기서는 쿠키를 사용하지 않습니다.
+# 기존 Railway 쿠키가 있으면 mweb에서도 그대로 사용합니다.
+if YT_COOKIE_FILE:
+    YDL_OPTIONS['cookiefile'] = YT_COOKIE_FILE
 
-# Railway에서 필요할 경우 최신 브라우저 User-Agent를 Variable로 지정할 수 있습니다.
+# Railway에서 필요할 경우 User-Agent를 지정할 수 있습니다.
 YT_USER_AGENT = os.getenv("YOUTUBE_USER_AGENT", "").strip()
 if YT_USER_AGENT:
     YDL_OPTIONS['http_headers'] = {
-        'User-Agent': YT_USER_AGENT
+        'User-Agent': YT_USER_AGENT,
+        'Referer': 'https://www.youtube.com/',
     }
 
 # =====================
@@ -195,14 +205,24 @@ if YT_USER_AGENT:
 # =====================
 def make_ffmpeg_source(url, http_headers=None):
     """YouTube의 직접 오디오 URL을 FFmpeg로 재생합니다.
-    yt-dlp가 돌려준 HTTP 헤더를 FFmpeg에도 전달해 403/무음 문제를 줄입니다.
+    yt-dlp가 돌려준 스트림 헤더를 FFmpeg에도 최대한 그대로 전달합니다.
     """
-    headers = http_headers or {}
-    user_agent = headers.get("User-Agent", "Mozilla/5.0")
-    referer = headers.get("Referer", "https://www.youtube.com/")
+    headers = dict(http_headers or {})
+    headers.setdefault("User-Agent", "Mozilla/5.0")
+    headers.setdefault("Referer", "https://www.youtube.com/")
+
+    # yt-dlp가 제공한 헤더를 모두 FFmpeg에 전달하면
+    # googlevideo.com 스트림의 403/무음 문제를 줄일 수 있습니다.
+    header_lines = []
+    for key, value in headers.items():
+        if value is None:
+            continue
+        header_lines.append(f"{key}: {value}")
+    header_blob = "\r\n".join(header_lines) + "\r\n"
+
     before_options = (
         '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
-        f'-headers "User-Agent: {user_agent}\r\nReferer: {referer}\r\n"'
+        f'-headers "{header_blob}"'
     )
     return discord.FFmpegPCMAudio(
         url,
