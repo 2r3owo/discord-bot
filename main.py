@@ -163,41 +163,85 @@ YDL_OPTIONS = {
     'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
-    'no_warnings': True,
+    'no_warnings': False,
     'default_search': 'auto',
     'nocheckcertificate': True,
-
-    # YouTube 최신 PO Token 방식:
-    # Railway 컨테이너 안에서 bgutil provider가 127.0.0.1:4416에서
-    # PO Token을 만들어 주고, yt-dlp의 mweb 클라이언트가 이를 사용합니다.
-    'extractor_args': {
-        'youtube': {
-            'player_client': ['mweb'],
-            'youtubepot-bgutilhttp': {
-                'base_url': os.getenv(
-                    'YTDLP_POT_PROVIDER_URL',
-                    'http://127.0.0.1:4416'
-                ),
-            },
-        }
-    },
-
-    # YouTube 최신 JS challenge(EJS)를 사용할 수 있도록 GitHub에서 로드합니다.
+    # 최신 YouTube JS challenge 대응
     'remote_components': {'ejs:github'},
     'js_runtimes': {'deno': {}},
 }
 
-# 기존 Railway 쿠키가 있으면 mweb에서도 그대로 사용합니다.
+# 기존 Railway 쿠키는 mweb 인증에만 사용합니다.
+# web_embedded / web_safari / android_vr 재시도에서는 쿠키를 넣지 않습니다.
 if YT_COOKIE_FILE:
     YDL_OPTIONS['cookiefile'] = YT_COOKIE_FILE
 
-# Railway에서 필요할 경우 User-Agent를 지정할 수 있습니다.
 YT_USER_AGENT = os.getenv("YOUTUBE_USER_AGENT", "").strip()
 if YT_USER_AGENT:
     YDL_OPTIONS['http_headers'] = {
         'User-Agent': YT_USER_AGENT,
         'Referer': 'https://www.youtube.com/',
     }
+
+
+def make_youtube_options(mode, outtmpl):
+    """YouTube 차단 방식에 따라 재시도할 yt-dlp 설정을 만듭니다.
+
+    1) mweb + 기존 쿠키 + bgutil PO Token
+    2) mweb + 쿠키 없이 bgutil PO Token
+    3) web_safari + 쿠키 없이 HLS
+    4) web_embedded + 쿠키 없이
+    5) android_vr + 쿠키 없이
+    """
+    opts = dict(YDL_OPTIONS)
+    opts['outtmpl'] = outtmpl
+    opts['format'] = 'bestaudio/best'
+    opts['noplaylist'] = True
+    opts['quiet'] = True
+    opts['no_warnings'] = False
+
+    if mode == 'mweb_cookie':
+        opts['extractor_args'] = {
+            'youtube': {'player_client': ['mweb']},
+            'youtubepot-bgutilhttp': {
+                'base_url': os.getenv('YTDLP_POT_PROVIDER_URL', 'http://127.0.0.1:4416'),
+            },
+        }
+        if YT_COOKIE_FILE:
+            opts['cookiefile'] = YT_COOKIE_FILE
+        return opts
+
+    if mode == 'mweb_nocookie':
+        opts['extractor_args'] = {
+            'youtube': {'player_client': ['mweb']},
+            'youtubepot-bgutilhttp': {
+                'base_url': os.getenv('YTDLP_POT_PROVIDER_URL', 'http://127.0.0.1:4416'),
+            },
+        }
+        opts.pop('cookiefile', None)
+        return opts
+
+    if mode == 'web_safari':
+        opts['extractor_args'] = {
+            'youtube': {'player_client': ['web_safari']},
+        }
+        opts.pop('cookiefile', None)
+        return opts
+
+    if mode == 'web_embedded':
+        opts['extractor_args'] = {
+            'youtube': {'player_client': ['web_embedded']},
+        }
+        opts.pop('cookiefile', None)
+        return opts
+
+    # 마지막 폴백: android_vr (현재 YouTube에서 PO Token 없이 사용 가능한 클라이언트)
+    opts['extractor_args'] = {
+        'youtube': {'player_client': ['android_vr']},
+    }
+    opts.pop('cookiefile', None)
+    return opts
+
 
 # =====================
 # 보조 함수 (대기열 관리) - 수정 및 보완
@@ -215,46 +259,62 @@ def _cleanup_file(path):
 
 
 def download_song(search_or_url, guild_id):
-    """YouTube 스트림 URL을 FFmpeg에 직접 넘기지 않고,
-    yt-dlp가 직접 음원을 받아 /tmp에 저장한 뒤 로컬 파일을 재생합니다.
-    이렇게 하면 googlevideo.com URL을 FFmpeg가 직접 열 때 발생하는 403을 피할 수 있습니다.
+    """YouTube 음원을 로컬 /tmp 파일로 다운로드합니다.
+
+    YouTube가 Railway IP/쿠키/클라이언트를 다르게 차단할 수 있으므로
+    한 가지 방식이 실패해도 다른 클라이언트로 자동 재시도합니다.
     """
     query = search_or_url if search_or_url.startswith("https://") else f"ytsearch:{search_or_url}"
     unique = uuid.uuid4().hex
     outtmpl = f"/tmp/discord_music_{guild_id}_{unique}.%(ext)s"
 
-    opts = dict(YDL_OPTIONS)
-    opts['outtmpl'] = outtmpl
-    # 오디오 파일을 우선 사용. FFmpeg가 직접 디코딩할 수 있는 원본을 받습니다.
-    opts['format'] = 'bestaudio/best'
-    opts['noplaylist'] = True
-    opts['quiet'] = True
-    opts['no_warnings'] = False
+    modes = [
+        'mweb_cookie',
+        'mweb_nocookie',
+        'web_safari',
+        'web_embedded',
+        'android_vr',
+    ]
+    last_error = None
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(query, download=False)
-        if 'entries' in info:
-            entries = [e for e in info.get('entries', []) if e]
-            if not entries:
-                raise RuntimeError("검색 결과에서 재생할 영상을 찾지 못했습니다.")
-            info = entries[0]
+    for mode in modes:
+        try:
+            print(f"🔎 YouTube 재생 방식 시도: {mode}")
+            opts = make_youtube_options(mode, outtmpl)
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                if 'entries' in info:
+                    entries = [e for e in info.get('entries', []) if e]
+                    if not entries:
+                        raise RuntimeError("검색 결과에서 재생할 영상을 찾지 못했습니다.")
+                    info = entries[0]
 
-        title = info.get('title', '알 수 없는 곡')
-        print(f"⬇️ 음원 다운로드 시작: {title}")
-        ydl.process_info(info)
-        filepath = ydl.prepare_filename(info)
+                title = info.get('title', '알 수 없는 곡')
+                print(f"⬇️ 음원 다운로드 시작 ({mode}): {title}")
+                ydl.process_info(info)
+                filepath = ydl.prepare_filename(info)
 
-    if not os.path.exists(filepath):
-        # 일부 후처리/확장자 변경 상황을 대비해 같은 prefix의 파일을 찾습니다.
-        prefix = Path(outtmpl).stem.replace('.%(ext)s', '')
-        candidates = list(Path('/tmp').glob(f"discord_music_{guild_id}_{unique}.*"))
-        if candidates:
-            filepath = str(candidates[0])
-        else:
-            raise FileNotFoundError(f"다운로드 파일을 찾지 못했습니다: {filepath}")
+            if not os.path.exists(filepath):
+                candidates = list(Path('/tmp').glob(f"discord_music_{guild_id}_{unique}.*"))
+                if candidates:
+                    filepath = str(candidates[0])
+                else:
+                    raise FileNotFoundError(f"다운로드 파일을 찾지 못했습니다: {filepath}")
 
-    print(f"✅ 음원 다운로드 완료: {filepath}")
-    return filepath, title
+            print(f"✅ 음원 다운로드 완료 ({mode}): {filepath}")
+            return filepath, title
+
+        except Exception as e:
+            last_error = e
+            print(f"⚠️ YouTube 방식 {mode} 실패: {e!r}")
+            # 실패한 시도의 찌꺼기 파일을 정리하고 다음 방식으로 넘어갑니다.
+            for candidate in Path('/tmp').glob(f"discord_music_{guild_id}_{unique}.*"):
+                try:
+                    candidate.unlink()
+                except Exception:
+                    pass
+
+    raise RuntimeError(f"YouTube에서 음원을 가져오지 못했습니다: {last_error}")
 
 
 def make_ffmpeg_source(filepath):
