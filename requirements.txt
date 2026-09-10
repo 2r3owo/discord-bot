@@ -3,3 +3,5 @@ yt-dlp[default]>=2026.8
 Flask>=3.0
 Pillow>=10.0
 bgutil-ytdlp-pot-provider==2.0.0
+Flask
+Pillow
