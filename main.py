@@ -1,22 +1,18 @@
-
+import discord
 from discord.ext import commands, tasks
 import random
 import yt_dlp
 import asyncio
 import os
-from collections import deque, defaultdict
+from collections import deque
 from datetime import datetime, timezone, timedelta
-
-from discord import app_commands
-from discord.ui import View, Button
-from flask import Flask, request, jsonify, render_template_string, abort
+from flask import Flask, request, jsonify, render_template_string
 from PIL import Image
 import io
 import base64
 import threading
 import secrets
 import time
-import uuid
 
 # 초성을 추출하는 함수
 def get_chosung(text):
@@ -40,6 +36,9 @@ def now_kst():
 # =====================
 TOKEN = os.getenv('DISCORD_TOKEN') 
 CHANNEL_ID = None
+
+PORT = int(os.getenv("PORT", "8080"))
+DRAW_URL = os.getenv("DRAW_URL", "http://localhost:8080").rstrip("/")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -133,24 +132,6 @@ def now_kst():
 def now_kst():
     return datetime.now(timezone(timedelta(hours=9)))
 
-# =====================
-# 봇 준비 완료 시 루프 시작
-# =====================
-@bot.event
-async def on_ready():
-    print(f"✅ 봇 로그인 완료: {bot.user}")
-
-    if not morning.is_running():
-        morning.start()
-
-    if not lunch.is_running():
-        lunch.start()
-
-    if not dinner.is_running():
-        dinner.start()
-
-    if not test_greeting.is_running():
-        test_greeting.start()
 
 # =====================
 # 명령어: 오늘의운세 (서버별 독립 버전)
@@ -819,15 +800,6 @@ async def 도박(interaction: discord.Interaction, bet: int):
 # =====================
 # 명령어: 퍼니퀴즈
 # =====================
-# 1. 봇이 켜질 때 슬래시 명령어를 디스코드에 등록하는 설정
-@bot.event
-async def on_ready():
-    try:
-        synced = await bot.tree.sync()
-        print(f"{bot.user.name} 연결 완료!")
-        print(f"동기화된 명령어 개수: {len(synced)}개")
-    except Exception as e:
-        print(f"동기화 중 오류 발생: {e}")
 
 
 # =====================
@@ -842,23 +814,6 @@ async def 중단(interaction: discord.Interaction):
     else:
         await interaction.response.send_message("❓ 현재 이 서버에서 진행 중인 게임이 없습니다.", ephemeral=True)
 
-# =====================
-# 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
-# =====================
-@bot.event
-async def on_ready():
-    # 슬래시 커맨드 동기화
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ {bot.user.name} 연결 완료! {len(synced)}개 명령어 동기화됨")
-    except Exception as e:
-        print(f"❌ 동기화 중 오류: {e}")
-
-    # 인사 스케줄러 실행 (기존에 정의하신 morning, lunch 등)
-    if not morning.is_running(): morning.start()
-    if not lunch.is_running(): lunch.start()
-    if not dinner.is_running(): dinner.start()
-    if not test_greeting.is_running(): test_greeting.start()
 
 # =====================
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
@@ -1054,8 +1009,9 @@ async def help_command(interaction: discord.Interaction):
               "`/낚시`: 물고기를 잡아 보관함에 저장합니다.\n"
               "`/보관함`: 이 서버에서 잡은 내 물고기 목록을 봅니다.\n"
               "`/가격표`: 어떤 물고기가 비싼지 시세를 확인합니다. (신규)\n"
-              "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)"
-              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n",
+              "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)\n"
+              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n"
+              "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n",
         inline=False
     )
 
@@ -1094,750 +1050,127 @@ async def help_command(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
 
-# ============================================================
-# 🎨 Discord 그림판 (기존 봇에 통합)
-# ============================================================
 
-# -------------------------
-# Flask
-# -------------------------
+# =====================
+# 🎨 웹 그림판
+# =====================
 app = Flask(__name__)
+draw_sessions = {}
+DRAW_SESSION_TTL = 12 * 60 * 60
+DRAW_MAX_BYTES = 8 * 1024 * 1024
 
-# session_id -> session data
-sessions = {}
-
-# room_id -> list of drawing operations
-rooms = defaultdict(list)
-
-# room_id -> metadata
-room_meta = {}
-
-# 최대 저장 stroke 수
-MAX_STROKES = 5000
-
-
-def new_session(user_id, guild_id, channel_id):
-    session_id = uuid.uuid4().hex
-    room_id = uuid.uuid4().hex[:12]
-
-    sessions[session_id] = {
-        "user_id": user_id,
-        "guild_id": guild_id,
-        "channel_id": channel_id,
-        "room_id": room_id,
-        "created": time.time(),
-    }
-
-    room_meta[room_id] = {
-        "guild_id": guild_id,
-        "channel_id": channel_id,
-        "creator_id": user_id,
-    }
-
-    return session_id
-
-
-def get_session(session_id):
-    s = sessions.get(session_id)
-    if not s:
-        abort(403)
-    # 12시간 이상 된 세션 제거
-    if time.time() - s["created"] > 60 * 60 * 12:
-        sessions.pop(session_id, None)
-        abort(403)
-    return s
-
-
-HTML = r"""
-<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+DRAW_HTML = """
+<!doctype html><html lang="ko"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Discord 그림판</title>
 <style>
-* { box-sizing:border-box; }
-body {
-    margin:0;
-    background:#111214;
-    color:#fff;
-    font-family:Arial,"Noto Sans KR",sans-serif;
-}
-.top {
-    height:64px;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:10px 16px;
-    background:#1e1f22;
-    border-bottom:1px solid #303238;
-}
-.title { font-weight:700; font-size:18px; }
-.status {
-    font-size:12px;
-    color:#aaa;
-    margin-left:auto;
-}
-.wrap {
-    max-width:1200px;
-    margin:16px auto;
-    padding:0 12px;
-}
-.toolbar {
-    display:flex;
-    flex-wrap:wrap;
-    align-items:center;
-    gap:7px;
-    padding:10px;
-    background:#1e1f22;
-    border:1px solid #303238;
-    border-radius:12px;
-    margin-bottom:12px;
-}
-button, select, input[type=number] {
-    border:0;
-    border-radius:8px;
-    padding:9px 11px;
-    background:#2b2d31;
-    color:#fff;
-    cursor:pointer;
-}
-button:hover { background:#383a40; }
-button.active { background:#5865f2; }
-button.danger { background:#b83d3d; }
-button.good { background:#248046; }
-label {
-    display:flex;
-    align-items:center;
-    gap:5px;
-    font-size:13px;
-}
-#color {
-    width:42px;
-    height:36px;
-    padding:2px;
-}
-#canvasBox {
-    background:#222428;
-    border:1px solid #303238;
-    border-radius:12px;
-    padding:10px;
-}
-canvas {
-    width:100%;
-    display:block;
-    background:#fff;
-    border-radius:8px;
-    touch-action:none;
-    cursor:crosshair;
-}
-.info {
-    margin-top:10px;
-    color:#aaa;
-    font-size:12px;
-}
-#textInput {
-    width:160px;
-    padding:8px;
-    border-radius:8px;
-    border:0;
-    background:#2b2d31;
-    color:#fff;
-}
-</style>
-</head>
-<body>
-<div class="top">
-    <div class="title">🎨 Discord 그림판</div>
-    <div class="status" id="status">연결 중...</div>
+body{margin:0;background:#f3f4f6;font-family:Arial,sans-serif}
+#bar{position:sticky;top:0;background:white;padding:10px;border-bottom:1px solid #ddd;z-index:2}
+button,input{margin:3px;padding:7px}canvas{display:block;background:white;border:1px solid #ccc;margin:12px auto;max-width:calc(100% - 24px);touch-action:none}
+</style></head><body>
+<div id="bar">
+<b>🎨 Discord 그림판</b><br>
+<button onclick="tool='brush'">브러시</button><button onclick="tool='eraser'">지우개</button>
+<button onclick="tool='line'">직선</button><button onclick="tool='rect'">사각형</button>
+<button onclick="tool='circle'">원</button><button onclick="addText()">텍스트</button>
+<input id="color" type="color" value="#000000">
+크기 <input id="size" type="range" min="1" max="60" value="6">
+투명도 <input id="alpha" type="range" min="1" max="100" value="100">
+<button onclick="undo()">↩ 실행취소</button><button onclick="redo()">↪ 다시실행</button>
+<button onclick="clearCanvas()">🗑 초기화</button><button onclick="finish()">📤 Discord에 올리기</button>
 </div>
-
-<div class="wrap">
-    <div class="toolbar">
-        <button id="brush" class="active">🖌️ 브러시</button>
-        <button id="eraser">🧽 지우개</button>
-        <button id="line">／ 직선</button>
-        <button id="rect">□ 사각형</button>
-        <button id="circle">○ 원</button>
-        <button id="fill">🪣 채우기</button>
-
-        <label>색 <input id="color" type="color" value="#111111"></label>
-        <label>굵기
-            <input id="size" type="number" value="6" min="1" max="80" style="width:65px">
-        </label>
-        <label>투명도
-            <input id="opacity" type="number" value="100" min="1" max="100" style="width:65px">
-        </label>
-
-        <button id="undo">↩️ 실행취소</button>
-        <button id="redo">↪️ 다시실행</button>
-        <button id="clear" class="danger">🗑️ 전체삭제</button>
-        <button id="bg">⬜ 배경</button>
-
-        <input id="textInput" placeholder="텍스트 입력">
-        <button id="text">T 텍스트</button>
-
-        <button id="save">💾 저장</button>
-        <button id="finish" class="good">✅ 완료해서 올리기</button>
-    </div>
-
-    <div id="canvasBox">
-        <canvas id="canvas" width="1100" height="700"></canvas>
-    </div>
-    <div class="info">
-        마우스/손가락으로 그릴 수 있습니다. 여러 사람이 같은 방을 열면 그림이 실시간으로 공유됩니다.
-    </div>
-</div>
-
+<canvas id="c" width="1000" height="700"></canvas>
 <script>
-const sessionId = "{{ session_id }}";
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d", {willReadFrequently:true});
-
-let mode = "brush";
-let drawing = false;
-let start = null;
-let last = null;
-
-let strokes = [];
-let undone = [];
-let knownOpCount = 0;
-
-const $ = id => document.getElementById(id);
-
-function setupCanvas() {
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+const sid={{sid|tojson}}, c=document.getElementById('c'), x=c.getContext('2d');
+let tool='brush',down=false,sx=0,sy=0,lx=0,ly=0,h=[],f=[];
+x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+function pos(e){let r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height}}
+function state(){return c.toDataURL('image/png')}
+function restore(s){let i=new Image();i.onload=()=>{x.clearRect(0,0,c.width,c.height);x.drawImage(i,0,0)};i.src=s}
+function setup(){x.lineWidth=+size.value;x.globalAlpha=+alpha.value/100;x.lineCap='round';x.strokeStyle=color.value;x.fillStyle=color.value}
+function start(e){e.preventDefault();h.push(state());if(h.length>30)h.shift();f=[];let p=pos(e);sx=lx=p.x;sy=ly=p.y;down=true}
+function move(e){if(!down)return;e.preventDefault();let p=pos(e);setup();
+ if(tool==='brush'||tool==='eraser'){x.globalCompositeOperation=tool==='eraser'?'destination-out':'source-over';x.beginPath();x.moveTo(lx,ly);x.lineTo(p.x,p.y);x.stroke();x.globalCompositeOperation='source-over';lx=p.x;ly=p.y;return}
+ restore(h[h.length-1]);setup();
+ if(tool==='line'){x.beginPath();x.moveTo(sx,sy);x.lineTo(p.x,p.y);x.stroke()}
+ if(tool==='rect')x.strokeRect(sx,sy,p.x-sx,p.y-sy);
+ if(tool==='circle'){let rx=(p.x-sx)/2,ry=(p.y-sy)/2;x.beginPath();x.ellipse(sx+rx,sy+ry,Math.abs(rx),Math.abs(ry),0,0,Math.PI*2);x.stroke()}
 }
-setupCanvas();
-
-function getPos(e) {
-    const r = canvas.getBoundingClientRect();
-    return {
-        x: (e.clientX - r.left) * canvas.width / r.width,
-        y: (e.clientY - r.top) * canvas.height / r.height
-    };
-}
-
-function color() { return $("color").value; }
-function size() { return Number($("size").value) || 6; }
-function opacity() { return (Number($("opacity").value) || 100) / 100; }
-
-function setMode(m) {
-    mode = m;
-    ["brush","eraser","line","rect","circle","fill"].forEach(id => {
-        $(id).classList.toggle("active", id === m);
-    });
-}
-
-["brush","eraser","line","rect","circle","fill"].forEach(id => {
-    $(id).onclick = () => setMode(id);
-});
-
-function drawLine(a,b, c, w, alpha, erase=false) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.globalCompositeOperation = erase ? "destination-out" : "source-over";
-    ctx.strokeStyle = c;
-    ctx.lineWidth = w;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.beginPath();
-    ctx.moveTo(a.x,a.y);
-    ctx.lineTo(b.x,b.y);
-    ctx.stroke();
-    ctx.restore();
-}
-
-function redraw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    setupCanvas();
-
-    for (const op of strokes) {
-        applyOp(op);
-    }
-}
-
-function applyOp(op) {
-    if (op.type === "stroke") {
-        for (let i=1;i<op.points.length;i++) {
-            drawLine(
-                op.points[i-1],
-                op.points[i],
-                op.color,
-                op.size,
-                op.opacity,
-                op.erase
-            );
-        }
-        if (op.points.length === 1) {
-            drawLine(op.points[0], {x:op.points[0].x+0.01,y:op.points[0].y+0.01},
-                     op.color, op.size, op.opacity, op.erase);
-        }
-    } else if (op.type === "line") {
-        drawLine(op.a, op.b, op.color, op.size, op.opacity, false);
-    } else if (op.type === "rect") {
-        ctx.save();
-        ctx.globalAlpha=op.opacity;
-        ctx.strokeStyle=op.color;
-        ctx.lineWidth=op.size;
-        ctx.strokeRect(op.x,op.y,op.w,op.h);
-        ctx.restore();
-    } else if (op.type === "circle") {
-        ctx.save();
-        ctx.globalAlpha=op.opacity;
-        ctx.strokeStyle=op.color;
-        ctx.lineWidth=op.size;
-        ctx.beginPath();
-        ctx.arc(op.cx,op.cy,op.r,0,Math.PI*2);
-        ctx.stroke();
-        ctx.restore();
-    } else if (op.type === "text") {
-        ctx.save();
-        ctx.globalAlpha=op.opacity;
-        ctx.fillStyle=op.color;
-        ctx.font=op.font;
-        ctx.fillText(op.text,op.x,op.y);
-        ctx.restore();
-    } else if (op.type === "clear") {
-        setupCanvas();
-    } else if (op.type === "background") {
-        ctx.fillStyle=op.color;
-        ctx.fillRect(0,0,canvas.width,canvas.height);
-    }
-}
-
-function addLocalOp(op) {
-    strokes.push(op);
-    undone = [];
-    applyOp(op);
-    sendOp(op);
-}
-
-async function sendOp(op) {
-    try {
-        await fetch("/api/op/" + sessionId, {
-            method:"POST",
-            headers:{"Content-Type":"application/json","X-Client-ID":window.clientId},
-            body:JSON.stringify(op)
-        });
-    } catch(e) {}
-}
-
-canvas.addEventListener("pointerdown", e => {
-    e.preventDefault();
-    canvas.setPointerCapture(e.pointerId);
-    drawing = true;
-    start = last = getPos(e);
-
-    if (mode === "fill") {
-        const op = {
-            type:"background",
-            color:color()
-        };
-        addLocalOp(op);
-        drawing=false;
-        return;
-    }
-
-    if (mode === "brush" || mode === "eraser") {
-        // 실제 stroke는 pointerup에서 한 번 전송
-    }
-});
-
-canvas.addEventListener("pointermove", e => {
-    if (!drawing) return;
-    e.preventDefault();
-    const p = getPos(e);
-
-    if (mode === "brush" || mode === "eraser") {
-        drawLine(last,p,color(),size(),opacity(),mode==="eraser");
-        if (!start.points) start.points=[];
-        start.points.push(p);
-        last=p;
-    } else {
-        redraw();
-        // 현재 작업 미리보기
-        if (mode==="line") {
-            drawLine(start,p,color(),size(),opacity(),false);
-        } else if (mode==="rect") {
-            ctx.save();
-            ctx.strokeStyle=color();
-            ctx.globalAlpha=opacity();
-            ctx.lineWidth=size();
-            ctx.strokeRect(start.x,start.y,p.x-start.x,p.y-start.y);
-            ctx.restore();
-        } else if (mode==="circle") {
-            const r=Math.hypot(p.x-start.x,p.y-start.y);
-            ctx.save();
-            ctx.strokeStyle=color();
-            ctx.globalAlpha=opacity();
-            ctx.lineWidth=size();
-            ctx.beginPath();
-            ctx.arc(start.x,start.y,r,0,Math.PI*2);
-            ctx.stroke();
-            ctx.restore();
-        }
-    }
-});
-
-canvas.addEventListener("pointerup", e => {
-    if (!drawing) return;
-    drawing=false;
-    const p=getPos(e);
-
-    if (mode==="brush" || mode==="eraser") {
-        const pts = start.points || [];
-        if (pts.length===0) pts.push(p);
-        addLocalOp({
-            type:"stroke",
-            points:[start,...pts],
-            color:color(),
-            size:size(),
-            opacity:opacity(),
-            erase:mode==="eraser"
-        });
-    } else if (mode==="line") {
-        addLocalOp({
-            type:"line", a:start, b:p,
-            color:color(), size:size(), opacity:opacity()
-        });
-    } else if (mode==="rect") {
-        addLocalOp({
-            type:"rect",
-            x:start.x, y:start.y,
-            w:p.x-start.x, h:p.y-start.y,
-            color:color(), size:size(), opacity:opacity()
-        });
-    } else if (mode==="circle") {
-        addLocalOp({
-            type:"circle",
-            cx:start.x, cy:start.y,
-            r:Math.hypot(p.x-start.x,p.y-start.y),
-            color:color(), size:size(), opacity:opacity()
-        });
-    }
-    start=null;
-    last=null;
-});
-
-$("clear").onclick = () => {
-    if (confirm("전체 그림을 지울까요?")) {
-        addLocalOp({type:"clear"});
-    }
-};
-
-$("bg").onclick = () => {
-    addLocalOp({type:"background",color:color()});
-};
-
-$("text").onclick = () => {
-    const text=$("textInput").value.trim();
-    if (!text) return alert("텍스트를 입력하세요.");
-    alert("텍스트를 넣을 위치를 캔버스에서 클릭하세요.");
-    mode="text_wait";
-};
-
-canvas.addEventListener("click", e => {
-    if (mode !== "text_wait") return;
-    const p=getPos(e);
-    const op={
-        type:"text",
-        text:$("textInput").value.trim(),
-        x:p.x,y:p.y,
-        color:color(),
-        opacity:opacity(),
-        font:Math.max(12,size()*5)+"px Arial"
-    };
-    mode="brush";
-    setMode("brush");
-    addLocalOp(op);
-});
-
-$("undo").onclick = async () => {
-    if (!strokes.length) return;
-    const op=strokes.pop();
-    undone.push(op);
-    redraw();
-    await fetch("/api/state/"+sessionId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({strokes})
-    });
-};
-
-$("redo").onclick = async () => {
-    if (!undone.length) return;
-    const op=undone.pop();
-    strokes.push(op);
-    redraw();
-    await fetch("/api/state/"+sessionId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({strokes})
-    });
-};
-
-$("save").onclick = () => {
-    const a=document.createElement("a");
-    a.download="discord-drawing.png";
-    a.href=canvas.toDataURL("image/png");
-    a.click();
-};
-
-$("finish").onclick = async () => {
-    if (!confirm("그림을 현재 Discord 채널에 올릴까요?")) return;
-    $("status").textContent="업로드 중...";
-    const image=canvas.toDataURL("image/png");
-    const res=await fetch("/api/finish/"+sessionId,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({image})
-    });
-    const data=await res.json();
-    if (data.ok) {
-        $("status").textContent="Discord에 업로드 완료!";
-        alert("완료! Discord 채널에 그림이 올라갔습니다.");
-    } else {
-        $("status").textContent="업로드 실패";
-        alert(data.error || "업로드에 실패했습니다.");
-    }
-};
-
-async function poll() {
-    try {
-        const res=await fetch("/api/ops/"+sessionId+"?since="+knownOpCount);
-        if (!res.ok) throw new Error();
-        const data=await res.json();
-
-        if (data.ops && data.ops.length) {
-            for (const op of data.ops) {
-                // 내가 이미 적용한 작업은 서버에서도 오므로 중복 방지
-                if (op.client_id === window.clientId) continue;
-                strokes.push(op);
-                applyOp(op);
-            }
-            knownOpCount=data.total;
-        }
-        $("status").textContent="🟢 연결됨";
-    } catch(e) {
-        $("status").textContent="🔴 연결 끊김";
-    }
-}
-window.clientId=crypto.randomUUID();
-
-setInterval(poll,500);
-poll();
-</script>
-</body>
-</html>
+function end(){down=false}
+function addText(){let t=prompt('텍스트를 입력하세요');if(!t)return;h.push(state());setup();x.font=(+size.value*4)+'px Arial';x.fillText(t,50,100)}
+function undo(){if(!h.length)return;f.push(state());let s=h.pop();if(h.length)restore(s);else{ x.clearRect(0,0,c.width,c.height);x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}}
+function redo(){if(!f.length)return;h.push(state());restore(f.pop())}
+function clearCanvas(){h.push(state());f=[];x.clearRect(0,0,c.width,c.height);x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}
+async function finish(){let r=await fetch('/draw/'+sid+'/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:state()})});let j=await r.json();alert(j.ok?'Discord 채널에 업로드했습니다!':(j.error||'업로드 실패'))}
+c.addEventListener('pointerdown',start);c.addEventListener('pointermove',move);c.addEventListener('pointerup',end);c.addEventListener('pointercancel',end);
+</script></body></html>
 """
 
+def cleanup_draw_sessions():
+    now=time.time()
+    for sid in list(draw_sessions):
+        if now-draw_sessions[sid]["created"] > DRAW_SESSION_TTL:
+            draw_sessions.pop(sid,None)
 
-@app.get("/")
-def index():
-    session_id = request.args.get("session")
-    if not session_id:
-        return "Discord 그림판입니다. Discord의 그림판 버튼으로 들어오세요.", 400
-    get_session(session_id)
-    return render_template_string(HTML, session_id=session_id)
+@app.route("/draw/<sid>")
+def draw_page(sid):
+    cleanup_draw_sessions()
+    if sid not in draw_sessions:
+        return "그림판 세션이 만료되었습니다.",404
+    return render_template_string(DRAW_HTML,sid=sid)
 
-
-@app.post("/api/op/<session_id>")
-def add_op(session_id):
-    s = get_session(session_id)
-    data = request.get_json(silent=True) or {}
-    room_id = s["room_id"]
-
-    if len(rooms[room_id]) >= MAX_STROKES:
-        rooms[room_id] = rooms[room_id][-MAX_STROKES // 2:]
-
-    data["client_id"] = request.headers.get("X-Client-ID", "")
-    rooms[room_id].append(data)
-    return jsonify({"ok": True})
-
-
-@app.post("/api/state/<session_id>")
-def replace_state(session_id):
-    s = get_session(session_id)
-    data = request.get_json(silent=True) or {}
-    strokes = data.get("strokes", [])
-    rooms[s["room_id"]] = strokes[-MAX_STROKES:]
-    return jsonify({"ok": True})
-
-
-@app.get("/api/ops/<session_id>")
-def get_ops(session_id):
-    s = get_session(session_id)
-    room_id = s["room_id"]
-    since = int(request.args.get("since", "0"))
-
-    all_ops = rooms[room_id]
-    return jsonify({
-        "ops": all_ops[since:],
-        "total": len(all_ops)
-    })
-
-
-async def send_image_to_discord(guild_id, channel_id, user_id, png_bytes):
-    channel = bot.get_channel(channel_id)
-    if channel is None:
-        try:
-            channel = await bot.fetch_channel(channel_id)
-        except Exception:
-            return False, "Discord 채널을 찾을 수 없습니다."
-
-    guild = bot.get_guild(guild_id)
-    member = guild.get_member(user_id) if guild else None
-    username = member.display_name if member else f"User {user_id}"
-
-    file = discord.File(io.BytesIO(png_bytes), filename="drawing.png")
-
-    embed = discord.Embed(
-        title="🎨 그림이 완성됐어요!",
-        description=f"**{username}** 님이 그림을 그렸습니다.",
-        color=discord.Color.blurple()
-    )
-    embed.set_image(url="attachment://drawing.png")
-
+@app.route("/draw/<sid>/finish",methods=["POST"])
+def draw_finish(sid):
+    cleanup_draw_sessions()
+    session=draw_sessions.get(sid)
+    if not session:return jsonify(ok=False,error="세션이 만료되었습니다."),404
+    data=(request.get_json(silent=True) or {}).get("image","")
+    if not data.startswith("data:image/png;base64,"):
+        return jsonify(ok=False,error="잘못된 이미지입니다."),400
     try:
-        await channel.send(embed=embed, file=file)
-        return True, None
-    except discord.Forbidden:
-        return False, "봇에게 해당 채널의 메시지/파일 첨부 권한이 없습니다."
-    except Exception as e:
-        return False, str(e)
-
-
-@app.post("/api/finish/<session_id>")
-def finish(session_id):
-    s = get_session(session_id)
-    data = request.get_json(silent=True) or {}
-    image_data = data.get("image", "")
-
-    if "," not in image_data:
-        return jsonify({"ok":False,"error":"이미지 데이터가 없습니다."}), 400
-
-    try:
-        raw = base64.b64decode(image_data.split(",",1)[1])
-        # PNG 유효성/크기 확인
-        img = Image.open(io.BytesIO(raw)).convert("RGBA")
-        if img.width > 3000 or img.height > 3000:
-            return jsonify({"ok":False,"error":"이미지가 너무 큽니다."}), 400
-
-        out = io.BytesIO()
-        img.save(out, format="PNG", optimize=True)
-        png_bytes = out.getvalue()
+        raw=base64.b64decode(data.split(",",1)[1],validate=True)
+        if len(raw)>DRAW_MAX_BYTES:return jsonify(ok=False,error="이미지가 너무 큽니다."),413
+        im=Image.open(io.BytesIO(raw));im.verify()
+        buf=io.BytesIO(raw);buf.seek(0)
     except Exception:
-        return jsonify({"ok":False,"error":"이미지를 읽을 수 없습니다."}), 400
-
-    future = discord.utils.MISSING
-
-    async def runner():
-        return await send_image_to_discord(
-            s["guild_id"], s["channel_id"], s["user_id"], png_bytes
-        )
-
-    # Discord 이벤트 루프에서 코루틴 실행
-    future = asyncio.run_coroutine_threadsafe(runner(), bot.loop)
-
+        return jsonify(ok=False,error="이미지를 처리할 수 없습니다."),400
+    async def send():
+        ch=bot.get_channel(session["channel_id"])
+        if ch is None: ch=await bot.fetch_channel(session["channel_id"])
+        await ch.send(f"🎨 <@{session['user_id']}>님의 그림판 작품",file=discord.File(buf,"drawing.png"))
     try:
-        ok, err = future.result(timeout=30)
+        asyncio.run_coroutine_threadsafe(send(),bot.loop).result(timeout=30)
+        draw_sessions.pop(sid,None)
+        return jsonify(ok=True)
     except Exception as e:
-        ok, err = False, str(e)
+        print("그림 업로드 오류:",e)
+        return jsonify(ok=False,error="Discord 업로드에 실패했습니다."),500
 
-    if ok:
-        return jsonify({"ok":True})
-    return jsonify({"ok":False,"error":err or "Discord 업로드 실패"}), 500
+def run_draw_server():
+    app.run(host="0.0.0.0",port=PORT,debug=False,use_reloader=False)
 
+@bot.tree.command(name="그림",description="Discord 그림판을 엽니다.")
+async def 그림(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return await interaction.response.send_message("❌ 서버에서 사용해 주세요.",ephemeral=True)
+    cleanup_draw_sessions()
+    sid=secrets.token_urlsafe(32)
+    draw_sessions[sid]={"guild_id":interaction.guild.id,"channel_id":interaction.channel.id,"user_id":interaction.user.id,"created":time.time()}
+    view=discord.ui.View()
+    view.add_item(discord.ui.Button(label="🎨 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
+    await interaction.response.send_message(f"🎨 {interaction.user.mention}님, 그림판을 열었어요!",view=view)
 
-class DrawView(View):
-    def __init__(self, url):
-        super().__init__(timeout=3600)
-        self.add_item(Button(
-            label="🎨 그림판 열기",
-            style=discord.ButtonStyle.primary,
-            url=url
-        ))
-
-
-@bot.tree.command(name="그림", description="Discord 그림판을 엽니다.")
-async def draw(interaction: discord.Interaction):
-    if interaction.guild_id is None:
-        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
-
-    session_id = new_session(
-        interaction.user.id,
-        interaction.guild_id,
-        interaction.channel_id
-    )
-
-    url = f"{DRAW_URL}/?session={session_id}"
-
-    embed = discord.Embed(
-        title="🎨 그림판",
-        description=(
-            "아래 버튼을 눌러 그림판을 열어주세요!\n\n"
-            "🖌️ 브러시 / 🧽 지우개\n"
-            "／ 직선 / □ 사각형 / ○ 원\n"
-            "🪣 배경 / T 텍스트\n"
-            "↩️ 실행취소 / ↪️ 다시실행\n\n"
-            "완성한 뒤 **'완료해서 올리기'**를 누르면 "
-            "이 채널에 그림이 올라옵니다.\n\n"
-            "같은 링크를 여러 명이 열면 공동 그림판으로 사용할 수도 있어요."
-        ),
-        color=discord.Color.blurple()
-    )
-
-    await interaction.response.send_message(
-        embed=embed,
-        view=DrawView(url)
-    )
-
-
-
-@bot.tree.command(name="그림대회", description="그림대회용 그림판을 엽니다.")
-async def drawing_contest(interaction: discord.Interaction):
-    if interaction.guild_id is None:
-        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
-
-    session_id = new_session(
-        interaction.user.id,
-        interaction.guild_id,
-        interaction.channel_id
-    )
-    url = f"{DRAW_URL}/?session={session_id}&contest=1"
-
-    embed = discord.Embed(
-        title="🏆 그림대회",
-        description=(
-            "아래 버튼을 눌러 그림대회용 그림판을 열어주세요!\n\n"
-            "완성한 뒤 **'완료해서 올리기'**를 누르면 이 채널에 그림이 올라옵니다."
-        ),
-        color=discord.Color.gold()
-    )
-    await interaction.response.send_message(embed=embed, view=DrawView(url))
-
-
-# =====================
-# 그림판 웹서버 실행
-# =====================
-def run_flask():
-    app.run(host="0.0.0.0", port=PORT, debug=False, use_reloader=False)
-
-threading.Thread(target=run_flask, daemon=True).start()
-
-
-# =====================
-# 최종 봇 준비 완료 / 슬래시 명령어 동기화
-# =====================
 @bot.event
 async def on_ready():
     try:
-        synced = await bot.tree.sync()
+        synced=await bot.tree.sync()
         print(f"✅ {bot.user} 연결 완료! {len(synced)}개 명령어 동기화됨")
     except Exception as e:
-        print(f"❌ 슬래시 명령어 동기화 중 오류: {e}")
+        print(f"❌ 명령어 동기화 오류: {e}")
+    if not getattr(bot,"_draw_started",False):
+        bot._draw_started=True
+        threading.Thread(target=run_draw_server,daemon=True).start()
+        print(f"🎨 그림판 서버 시작: {DRAW_URL}")
 
 # =====================
 # 실행
