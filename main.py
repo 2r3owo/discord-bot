@@ -1,4 +1,4 @@
-
+import discord
 from discord.ext import commands, tasks
 import random
 import yt_dlp
@@ -41,9 +41,9 @@ def now_kst():
 TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID = None
 
-# 그림판 웹 주소 (Railway의 공개 URL을 DRAW_URL 환경변수로 설정)
-DRAW_URL = os.getenv('DRAW_URL', 'http://localhost:5000').rstrip('/')
-PORT = int(os.getenv('PORT', '5000'))
+# 그림판 웹서버 설정 (Railway에서는 PORT를 자동으로 지정합니다.)
+PORT = int(os.getenv("PORT", "8080"))
+DRAW_URL = os.getenv("DRAW_URL", "http://localhost:8080").rstrip("/")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -123,6 +123,13 @@ def check_queue(interaction: discord.Interaction):
         # 더 이상 재생할 곡이 없으면 대기열 삭제 (자동 퇴장은 선택 사항)
         if guild_id in queues:
             del queues[guild_id]
+
+# =====================
+# 유틸리티 함수
+# =====================
+def now_kst():
+    # 한국 시간(UTC+9) 계산
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 # =====================
 # KST 시간 함수
@@ -810,23 +817,15 @@ async def 중단(interaction: discord.Interaction):
         await interaction.response.send_message("❓ 현재 이 서버에서 진행 중인 게임이 없습니다.", ephemeral=True)
 
 # =====================
-# 봇 준비 완료 (통합 버전 - 상단/하단 중복 금지!)
+# 봇 준비 완료 (단일 on_ready)
 # =====================
 @bot.event
 async def on_ready():
-    # 슬래시 커맨드 동기화
     try:
         synced = await bot.tree.sync()
-        print(f"✅ {bot.user.name} 연결 완료! {len(synced)}개 명령어 동기화됨")
+        print(f"✅ {bot.user} 연결 완료! {len(synced)}개 명령어 동기화됨")
     except Exception as e:
-        print(f"❌ 동기화 중 오류: {e}")
-
-    # 인사 스케줄러 실행 (기존에 정의하신 morning, lunch 등)
-    if not morning.is_running(): morning.start()
-    if not lunch.is_running(): lunch.start()
-    if not dinner.is_running(): dinner.start()
-    if not test_greeting.is_running(): test_greeting.start()
-    print(f"🌐 그림판 주소: {DRAW_URL}")
+        print(f"❌ 슬래시 명령어 동기화 중 오류: {e}")
 
 # =====================
 # 음성 및 노래 재생 관련 (슬래시 커맨드 버전)
@@ -1023,7 +1022,8 @@ async def help_command(interaction: discord.Interaction):
               "`/보관함`: 이 서버에서 잡은 내 물고기 목록을 봅니다.\n"
               "`/가격표`: 어떤 물고기가 비싼지 시세를 확인합니다. (신규)\n"
               "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)"
-              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n",
+              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n"
+               "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n",
         inline=False
     )
 
@@ -1386,7 +1386,7 @@ async function sendOp(op) {
     try {
         await fetch("/api/op/" + sessionId, {
             method:"POST",
-            headers:{"Content-Type":"application/json","X-Client-ID":clientId},
+            headers:{"Content-Type":"application/json","X-Client-ID":window.clientId},
             body:JSON.stringify(op)
         });
     } catch(e) {}
@@ -1771,6 +1771,6 @@ def run_flask():
 threading.Thread(target=run_flask, daemon=True).start()
 
 # =====================
-# 기존 봇 실행
+# 실행
 # =====================
 bot.run(TOKEN)
