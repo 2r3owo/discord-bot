@@ -79,6 +79,67 @@ def set_user_data(data_dict, guild_id, user_id, value):
 # 노래 대기열 저장소 (서버별 관리)
 queues = {}
 
+# =====================
+# YouTube 쿠키 설정 (Railway용)
+# =====================
+# Railway 서버에서는 내 PC의 Chrome 쿠키를 직접 읽을 수 없기 때문에
+# Railway Variables의 YOUTUBE_COOKIES_B64 값을 사용해 쿠키 파일을 생성합니다.
+YT_COOKIE_PATH = "/tmp/youtube_cookies.txt"
+
+def setup_youtube_cookies():
+    # 1순위: Railway Secret/Variable에 Base64로 넣은 쿠키
+    cookies_b64 = os.getenv("YOUTUBE_COOKIES_B64", "").strip()
+    if cookies_b64:
+        try:
+            cookie_bytes = base64.b64decode(cookies_b64, validate=True)
+
+            # yt-dlp가 읽을 수 있는 Netscape/Mozilla 쿠키 파일인지 간단히 확인
+            first_line = cookie_bytes.splitlines()[0].decode("utf-8", errors="ignore").strip() if cookie_bytes.splitlines() else ""
+            if first_line not in ("# HTTP Cookie File", "# Netscape HTTP Cookie File"):
+                print("⚠️ YOUTUBE_COOKIES_B64가 Netscape/Mozilla 쿠키 파일 형식이 아닙니다.")
+                return None
+
+            with open(YT_COOKIE_PATH, "wb") as f:
+                f.write(cookie_bytes)
+
+            print("🍪 YouTube 쿠키 로드 완료 (Railway Secret)")
+            return YT_COOKIE_PATH
+
+        except Exception as e:
+            print(f"⚠️ YouTube 쿠키(Base64) 로드 실패: {e}")
+
+    # 2순위: Railway Variable에 일반 텍스트로 넣은 쿠키
+    cookies_text = os.getenv("YOUTUBE_COOKIES", "")
+    if cookies_text.strip():
+        try:
+            # Railway에 \n 문자 그대로 들어온 경우 실제 줄바꿈으로 변환
+            cookies_text = cookies_text.replace("\\n", "\n")
+            first_line = cookies_text.splitlines()[0].strip() if cookies_text.splitlines() else ""
+
+            if first_line not in ("# HTTP Cookie File", "# Netscape HTTP Cookie File"):
+                print("⚠️ YOUTUBE_COOKIES가 Netscape/Mozilla 쿠키 파일 형식이 아닙니다.")
+                return None
+
+            with open(YT_COOKIE_PATH, "w", encoding="utf-8", newline="\n") as f:
+                f.write(cookies_text)
+
+            print("🍪 YouTube 쿠키 로드 완료 (Railway Variable)")
+            return YT_COOKIE_PATH
+
+        except Exception as e:
+            print(f"⚠️ YouTube 쿠키 로드 실패: {e}")
+
+    # 3순위: 프로젝트에 cookies.txt가 실제로 존재하는 경우
+    if os.path.exists("cookies.txt"):
+        print("🍪 로컬 cookies.txt 사용")
+        return "cookies.txt"
+
+    print("⚠️ YouTube 쿠키가 없습니다. Railway에서는 YOUTUBE_COOKIES_B64 설정이 필요할 수 있습니다.")
+    return None
+
+
+YT_COOKIE_FILE = setup_youtube_cookies()
+
 # YDL 및 FFMPEG 옵션
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -86,14 +147,25 @@ FFMPEG_OPTIONS = {
 }
 
 YDL_OPTIONS = {
-    'format': 'bestaudio/best',  # 'bestaudio'가 안되면 'best'라도 가져오게 설정
+    'format': 'bestaudio/best',
     'noplaylist': True,
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
-    'cookiefile': 'cookies.txt', # 방금 공들여 만드신 쿠키!
 }
+
+# 쿠키가 있을 때만 cookiefile 옵션을 추가합니다.
+# 쿠키가 없으면 yt-dlp가 기본 방식으로 먼저 시도합니다.
+if YT_COOKIE_FILE:
+    YDL_OPTIONS['cookiefile'] = YT_COOKIE_FILE
+
+# Railway에서 필요할 경우 최신 브라우저 User-Agent를 Variable로 지정할 수 있습니다.
+YT_USER_AGENT = os.getenv("YOUTUBE_USER_AGENT", "").strip()
+if YT_USER_AGENT:
+    YDL_OPTIONS['http_headers'] = {
+        'User-Agent': YT_USER_AGENT
+    }
 
 # =====================
 # 보조 함수 (대기열 관리) - 수정 및 보완
@@ -1011,7 +1083,8 @@ async def help_command(interaction: discord.Interaction):
               "`/가격표`: 어떤 물고기가 비싼지 시세를 확인합니다. (신규)\n"
               "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)\n"
               "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n"
-              "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n",
+              "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n"
+              "`/그림대회`: 그림대회용 그림판을 엽니다.\n",
         inline=False
     )
 
@@ -1159,6 +1232,17 @@ async def 그림(interaction: discord.Interaction):
     view=discord.ui.View()
     view.add_item(discord.ui.Button(label="🎨 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
     await interaction.response.send_message(f"🎨 {interaction.user.mention}님, 그림판을 열었어요!",view=view)
+
+@bot.tree.command(name="그림대회",description="그림대회용 그림판을 엽니다.")
+async def 그림대회(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return await interaction.response.send_message("❌ 서버에서 사용해 주세요.",ephemeral=True)
+    cleanup_draw_sessions()
+    sid=secrets.token_urlsafe(32)
+    draw_sessions[sid]={"guild_id":interaction.guild.id,"channel_id":interaction.channel.id,"user_id":interaction.user.id,"created":time.time()}
+    view=discord.ui.View()
+    view.add_item(discord.ui.Button(label="🏆 그림대회 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
+    await interaction.response.send_message(f"🏆 {interaction.user.mention}님, 그림대회 그림판을 열었어요!",view=view)
 
 @bot.event
 async def on_ready():
