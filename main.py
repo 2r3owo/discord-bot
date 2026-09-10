@@ -961,8 +961,12 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         if interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.stop() # stop 시 check_queue가 호출되지만 대기열이 비어있어 안전함
         
-        source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+        source = discord.FFmpegPCMAudio(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+        def _after(error):
+            if error:
+                print(f"❌ FFmpeg 재생 오류: {error!r}")
+            check_queue(interaction)
+        interaction.guild.voice_client.play(source, after=_after)
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
         
     except Exception as e:
@@ -994,8 +998,12 @@ async def 야기다려(interaction: discord.Interaction, search: str):
             queues[interaction.guild.id].append({'url': url, 'title': title})
             await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
         else:
-            source = await discord.FFmpegOpusAudio.from_probe(url, executable="ffmpeg", **FFMPEG_OPTIONS)
-            interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+            source = discord.FFmpegPCMAudio(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+            def _after_queue(error):
+                if error:
+                    print(f"❌ FFmpeg 재생 오류: {error!r}")
+                check_queue(interaction)
+            interaction.guild.voice_client.play(source, after=_after_queue)
             await interaction.followup.send(f"🎶 재생 시작: **{title}**")
 
     except Exception as e:
