@@ -4,13 +4,18 @@ import random
 import yt_dlp
 import asyncio
 import os
-from collections import deque
+from collections import deque, defaultdict
 from datetime import datetime, timezone, timedelta
 
 from discord import app_commands
 from discord.ui import View, Button
 from flask import Flask, request, jsonify, render_template_string, abort
 from PIL import Image
+import io
+import base64
+import threading
+import secrets
+import time
 
 # 초성을 추출하는 함수
 def get_chosung(text):
