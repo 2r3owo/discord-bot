@@ -1,6 +1,0 @@
-yt-dlp
-PyNaCl
-psycopg2-binary
-discord.py[voice]
-Flask
-Pillow
