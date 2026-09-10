@@ -1349,17 +1349,6 @@ async def 그림(interaction: discord.Interaction):
     view.add_item(discord.ui.Button(label="🎨 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
     await interaction.response.send_message(f"🎨 {interaction.user.mention}님, 그림판을 열었어요!",view=view)
 
-@bot.tree.command(name="그림대회",description="그림대회용 그림판을 엽니다.")
-async def 그림대회(interaction: discord.Interaction):
-    if interaction.guild is None:
-        return await interaction.response.send_message("❌ 서버에서 사용해 주세요.",ephemeral=True)
-    cleanup_draw_sessions()
-    sid=secrets.token_urlsafe(32)
-    draw_sessions[sid]={"guild_id":interaction.guild.id,"channel_id":interaction.channel.id,"user_id":interaction.user.id,"created":time.time()}
-    view=discord.ui.View()
-    view.add_item(discord.ui.Button(label="🏆 그림대회 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
-    await interaction.response.send_message(f"🏆 {interaction.user.mention}님, 그림대회 그림판을 열었어요!",view=view)
-
 @bot.event
 async def on_ready():
     try:
