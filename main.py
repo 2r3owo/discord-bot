@@ -1,4 +1,4 @@
-import discord
+
 from discord.ext import commands, tasks
 import random
 import yt_dlp
@@ -164,12 +164,23 @@ YDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
+
+    # YouTube가 최근 기본 클라이언트를 자주 막기 때문에
+    # PO Token이 필요 없는 android_vr 클라이언트를 우선 사용합니다.
+    # (yt-dlp 공식 문서 기준)
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android_vr'],
+        }
+    },
+
+    # YouTube의 최신 JS challenge(EJS)를 사용할 수 있도록 GitHub에서 로드합니다.
+    'remote_components': ['ejs:github'],
+    'js_runtimes': ['deno'],
 }
 
-# 쿠키가 있을 때만 cookiefile 옵션을 추가합니다.
-# 쿠키가 없으면 yt-dlp가 기본 방식으로 먼저 시도합니다.
-if YT_COOKIE_FILE:
-    YDL_OPTIONS['cookiefile'] = YT_COOKIE_FILE
+# android_vr는 계정 쿠키를 지원하지 않으므로, 이 방식에서는
+# 쿠키 파일을 억지로 넘기지 않습니다. Railway의 쿠키 변수는 그대로 둬도 됩니다.
 
 # Railway에서 필요할 경우 최신 브라우저 User-Agent를 Variable로 지정할 수 있습니다.
 YT_USER_AGENT = os.getenv("YOUTUBE_USER_AGENT", "").strip()
