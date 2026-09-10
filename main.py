@@ -801,20 +801,6 @@ async def 도박(interaction: discord.Interaction, bet: int):
             f"💰 현재 **이 서버** 잔고: {new_money:,}원"
         )
 
-# =====================
-# 명령어: 퍼니퀴즈
-# =====================
-# =====================
-# 명령어: 야그만해 (서버별 독립 버전)
-# =====================
-@bot.tree.command(name="야그만해", description="이 서버에서 진행 중인 퀴즈를 중단합니다.")
-async def 중단(interaction: discord.Interaction):
-    g_id = interaction.guild_id
-    if active_games.get(g_id):
-        active_games[g_id] = False
-        await interaction.response.send_message("🛑 이 서버의 게임 중단 요청을 완료했습니다.")
-    else:
-        await interaction.response.send_message("❓ 현재 이 서버에서 진행 중인 게임이 없습니다.", ephemeral=True)
 
 # =====================
 # 봇 준비 완료 (단일 on_ready)
