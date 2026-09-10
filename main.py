@@ -175,8 +175,8 @@ YDL_OPTIONS = {
     },
 
     # YouTube의 최신 JS challenge(EJS)를 사용할 수 있도록 GitHub에서 로드합니다.
-    'remote_components': ['ejs:github'],
-    'js_runtimes': ['deno'],
+    'remote_components': {'ejs:github'},
+    'js_runtimes': {'deno': {}},
 }
 
 # android_vr는 계정 쿠키를 지원하지 않으므로, 이 방식에서는
