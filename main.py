@@ -165,12 +165,11 @@ YDL_OPTIONS = {
     'default_search': 'auto',
     'nocheckcertificate': True,
 
-    # YouTube가 최근 기본 클라이언트를 자주 막기 때문에
-    # PO Token이 필요 없는 android_vr 클라이언트를 우선 사용합니다.
-    # (yt-dlp 공식 문서 기준)
+    # YouTube의 현재 PO Token 정책에서 web_embedded는 GVS PO Token이 필요 없는
+    # 클라이언트입니다. 일반 웹 클라이언트 대신 이 클라이언트만 사용합니다.
     'extractor_args': {
         'youtube': {
-            'player_client': ['android_vr'],
+            'player_client': ['web_embedded'],
         }
     },
 
@@ -179,8 +178,7 @@ YDL_OPTIONS = {
     'js_runtimes': {'deno': {}},
 }
 
-# android_vr는 계정 쿠키를 지원하지 않으므로, 이 방식에서는
-# 쿠키 파일을 억지로 넘기지 않습니다. Railway의 쿠키 변수는 그대로 둬도 됩니다.
+# web_embedded는 계정 쿠키 없이 사용할 수 있으므로 여기서는 쿠키를 사용하지 않습니다.
 
 # Railway에서 필요할 경우 최신 브라우저 User-Agent를 Variable로 지정할 수 있습니다.
 YT_USER_AGENT = os.getenv("YOUTUBE_USER_AGENT", "").strip()
@@ -192,6 +190,27 @@ if YT_USER_AGENT:
 # =====================
 # 보조 함수 (대기열 관리) - 수정 및 보완
 # =====================
+# =====================
+# FFmpeg 재생 보조 함수
+# =====================
+def make_ffmpeg_source(url, http_headers=None):
+    """YouTube의 직접 오디오 URL을 FFmpeg로 재생합니다.
+    yt-dlp가 돌려준 HTTP 헤더를 FFmpeg에도 전달해 403/무음 문제를 줄입니다.
+    """
+    headers = http_headers or {}
+    user_agent = headers.get("User-Agent", "Mozilla/5.0")
+    referer = headers.get("Referer", "https://www.youtube.com/")
+    before_options = (
+        '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 '
+        f'-headers "User-Agent: {user_agent}\r\nReferer: {referer}\r\n"'
+    )
+    return discord.FFmpegPCMAudio(
+        url,
+        executable="ffmpeg",
+        before_options=before_options,
+        options='-vn'
+    )
+
 def check_queue(interaction: discord.Interaction):
     """노래 재생이 끝나면 호출되어 다음 곡을 재생합니다."""
     guild_id = interaction.guild.id
@@ -199,11 +218,15 @@ def check_queue(interaction: discord.Interaction):
     if guild_id in queues and queues[guild_id]:
         next_song = queues[guild_id].popleft()
         
-        # FFmpeg 소스 생성
-        source = discord.FFmpegOpusAudio(next_song['url'], executable="ffmpeg", **FFMPEG_OPTIONS)
-        
+        # YouTube 직접 재생 URL은 User-Agent/Referer 헤더가 필요할 수 있습니다.
+        source = make_ffmpeg_source(next_song['url'], next_song.get('http_headers'))
+
         # 다음 곡 재생 (after에 다시 check_queue를 등록하여 무한 반복)
-        interaction.guild.voice_client.play(source, after=lambda e: check_queue(interaction))
+        def _after_next(error):
+            if error:
+                print(f"❌ FFmpeg 재생 오류(대기열): {error!r}")
+            check_queue(interaction)
+        interaction.guild.voice_client.play(source, after=_after_next)
         
         # 다음 곡 재생 알림 (비동기 루프 사용)
         coro = interaction.channel.send(f"🎶 다음 곡 재생: **{next_song['title']}**")
@@ -961,7 +984,7 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         if interaction.guild.voice_client.is_playing():
             interaction.guild.voice_client.stop() # stop 시 check_queue가 호출되지만 대기열이 비어있어 안전함
         
-        source = discord.FFmpegPCMAudio(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+        source = make_ffmpeg_source(url, info.get('http_headers'))
         def _after(error):
             if error:
                 print(f"❌ FFmpeg 재생 오류: {error!r}")
@@ -995,10 +1018,10 @@ async def 야기다려(interaction: discord.Interaction, search: str):
             queues[interaction.guild.id] = deque()
 
         if interaction.guild.voice_client.is_playing():
-            queues[interaction.guild.id].append({'url': url, 'title': title})
+            queues[interaction.guild.id].append({'url': url, 'title': title, 'http_headers': info.get('http_headers', {})})
             await interaction.followup.send(f"✅ 대기열에 추가됨: **{title}**")
         else:
-            source = discord.FFmpegPCMAudio(url, executable="ffmpeg", **FFMPEG_OPTIONS)
+            source = make_ffmpeg_source(url, info.get('http_headers'))
             def _after_queue(error):
                 if error:
                     print(f"❌ FFmpeg 재생 오류: {error!r}")
