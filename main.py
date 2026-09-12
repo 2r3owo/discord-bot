@@ -2248,56 +2248,80 @@ async def 그림(interaction: discord.Interaction):
 # =====================
 # 음악 기능: YouTube 차트 자동재생 버튼
 # =====================
+def _youtube_chart_source(chart_type):
+    """차트 버튼용 YouTube 재생목록 주소.
+
+    Railway 환경변수로 주소를 바꿀 수 있으며, 주소가 없으면
+    YouTube 검색 방식으로 자동 대체합니다.
+    """
+    if chart_type == "latest":
+        return os.getenv("YOUTUBE_LATEST_PLAYLIST_URL", "").strip()
+    return os.getenv("YOUTUBE_TOP100_PLAYLIST_URL", "").strip()
+
+
 def _youtube_chart_queries(chart_type):
     if chart_type == "latest":
         return [
-            "최신곡 2026 신곡 모음",
-            "이번주 최신 가요 신곡",
-            "최신 KPOP 신곡 공식 오디오",
+            "YouTube Music 최신곡 공식 플레이리스트",
+            "최신 신곡 공식 뮤직비디오 플레이리스트",
+            "KPOP new releases official playlist",
         ]
     return [
-        "유튜브 인기 음악 2026",
-        "인기 KPOP 플레이리스트 2026",
-        "KPOP 인기곡 모음 2026",
+        "YouTube Music Top 100 Korea official playlist",
+        "YouTube Music 인기곡 Top 100 공식 플레이리스트",
+        "KPOP top songs official playlist",
     ]
 
 
 def _fetch_youtube_chart(chart_type="top100", limit=100):
-    """멜론 페이지 대신 YouTube 검색 결과에서 최대 100곡을 가져옵니다."""
-    seen = set()
-    result = []
-    for keyword in _youtube_chart_queries(chart_type):
-        if len(result) >= limit:
-            break
-        opts = dict(YDL_OPTIONS)
-        opts.update({
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "extract_flat": True,
-            "playlistend": limit,
-            "noplaylist": False,
-        })
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(f"ytsearch{limit}:{keyword}", download=False)
-        for entry in info.get("entries", []) if info else []:
-            if not entry:
-                continue
-            url = entry.get("webpage_url") or entry.get("url")
-            title = entry.get("title")
-            if not url or not title or url in seen:
-                continue
-            seen.add(url)
-            result.append({
-                "title": title,
-                "url": url,
-                "thumbnail": entry.get("thumbnail", ""),
-            })
-            if len(result) >= limit:
-                break
-    if not result:
-        raise RuntimeError("YouTube 검색 결과를 가져오지 못했습니다.")
-    return result[:limit]
+    """YouTube 재생목록을 우선 사용하고, 없으면 YouTube 검색으로 가져옵니다."""
+    source = _youtube_chart_source(chart_type)
+    opts = dict(YDL_OPTIONS)
+    opts.update({
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": True,
+        "playlistend": limit,
+        "noplaylist": False,
+    })
+
+    sources = [source] if source else [f"ytsearch{limit}:{q}" for q in _youtube_chart_queries(chart_type)]
+    last_error = None
+    for target in sources:
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(target, download=False)
+            entries = info.get("entries", []) if info else []
+            result = []
+            seen = set()
+            for entry in entries:
+                if not entry:
+                    continue
+                url = entry.get("webpage_url") or entry.get("url")
+                title = entry.get("title")
+                if not url or not title or url in seen:
+                    continue
+                # 검색 결과의 내부 URL 대신 실제 YouTube 영상 주소를 우선 사용합니다.
+                if not str(url).startswith(("http://", "https://")):
+                    continue
+                seen.add(url)
+                result.append({
+                    "title": title.replace("&nbsp;", " ").strip(),
+                    "url": url,
+                    "thumbnail": entry.get("thumbnail", ""),
+                })
+                if len(result) >= limit:
+                    break
+            if result:
+                return result[:limit]
+        except Exception as exc:
+            last_error = exc
+            print(f"⚠️ YouTube 차트 소스 실패: {target} / {exc}")
+
+    if last_error:
+        raise RuntimeError(f"YouTube 차트 정보를 가져오지 못했습니다: {last_error}")
+    raise RuntimeError("YouTube 차트 정보가 비어 있습니다.")
 
 
 async def start_youtube_chart(interaction: discord.Interaction, chart_type="top100"):
