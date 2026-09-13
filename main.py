@@ -153,6 +153,12 @@ YDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'nocheckcertificate': True,
+    # YouTube의 브라우저 봇 확인 오류를 줄이기 위한 클라이언트 설정
+    'extractor_args': {
+        'youtube': {
+            'player_client': ['android', 'web'],
+        }
+    },
 }
 
 # 쿠키가 있을 때만 cookiefile 옵션을 추가합니다.
@@ -944,7 +950,7 @@ async def 야재생해(interaction: discord.Interaction, search: str):
         await interaction.followup.send(f"🎶 즉시 재생 시작: **{title}**")
         
     except Exception as e:
-        await interaction.followup.send(f"❌ 재생 중 오류 발생: {e}")
+        await interaction.followup.send("❌ 이 YouTube 영상은 현재 재생할 수 없어요. 다른 영상으로 시도해 주세요.")
 
 @bot.tree.command(name="야기다려", description="노래를 대기열에 추가합니다.")
 async def 야기다려(interaction: discord.Interaction, search: str):
@@ -977,7 +983,7 @@ async def 야기다려(interaction: discord.Interaction, search: str):
             await interaction.followup.send(f"🎶 재생 시작: **{title}**")
 
     except Exception as e:
-        await interaction.followup.send(f"❌ 대기열 추가 중 오류 발생: {e}")
+        await interaction.followup.send("❌ 이 YouTube 영상은 현재 대기열에 추가할 수 없어요. 다른 영상으로 시도해 주세요.")
 
 @bot.tree.command(name="야멈춰", description="재생 중인 노래를 중지합니다.")
 async def 야멈춰(interaction: discord.Interaction):
@@ -1084,7 +1090,8 @@ async def help_command(interaction: discord.Interaction):
               "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)\n"
               "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n"
               "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n"
-              "`/그림대회`: 그림대회용 그림판을 엽니다.\n",
+              "`/닉네임변경`: 닉네임 변경하고 싶을 때 쓰면 됩니다.\n"
+              "`/룰렛`: 결정 못할 때 돌리면 됩니다.\n",
         inline=False
     )
 
@@ -1124,7 +1131,6 @@ async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-# =====================
 # 🎨 웹 그림판
 # =====================
 app = Flask(__name__)
@@ -1143,37 +1149,53 @@ button,input{margin:3px;padding:7px}canvas{display:block;background:white;border
 </style></head><body>
 <div id="bar">
 <b>🎨 Discord 그림판</b><br>
-<button onclick="tool='brush'">브러시</button><button onclick="tool='eraser'">지우개</button>
-<button onclick="tool='line'">직선</button><button onclick="tool='rect'">사각형</button>
-<button onclick="tool='circle'">원</button><button onclick="addText()">텍스트</button>
-<input id="color" type="color" value="#000000">
+<button onclick="tool='brush'">브러시</button><button onclick="tool='eraser'">지우개</button><button onclick="tool='pixel'">🟪 픽셀아트</button><button onclick="tool='neon'">🌈 네온 브러쉬</button>
+<button onclick="tool='fill'">🪣 페인트통</button><button onclick="addText()">텍스트</button>
+<label>색상 <input id="color" type="color" value="#000000"></label><button onclick="randomColor()">🎨 랜덤 색</button>
 크기 <input id="size" type="range" min="1" max="60" value="6">
 투명도 <input id="alpha" type="range" min="1" max="100" value="100">
+<label><input id="transparent" type="checkbox" onchange="resetBackground()"> 투명 배경</label>
 <button onclick="undo()">↩ 실행취소</button><button onclick="redo()">↪ 다시실행</button>
 <button onclick="clearCanvas()">🗑 초기화</button><button onclick="finish()">📤 Discord에 올리기</button>
 </div>
 <canvas id="c" width="1000" height="700"></canvas>
 <script>
 const sid={{sid|tojson}}, c=document.getElementById('c'), x=c.getContext('2d');
-let tool='brush',down=false,sx=0,sy=0,lx=0,ly=0,h=[],f=[];
-x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);
+let tool='brush',down=false,lx=0,ly=0,h=[],f=[];let pixelSize=12;
+function resetBackground(){x.clearRect(0,0,c.width,c.height);if(!transparent.checked){x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}}
+resetBackground();
 function pos(e){let r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height}}
 function state(){return c.toDataURL('image/png')}
 function restore(s){let i=new Image();i.onload=()=>{x.clearRect(0,0,c.width,c.height);x.drawImage(i,0,0)};i.src=s}
 function setup(){x.lineWidth=+size.value;x.globalAlpha=+alpha.value/100;x.lineCap='round';x.strokeStyle=color.value;x.fillStyle=color.value}
-function start(e){e.preventDefault();h.push(state());if(h.length>30)h.shift();f=[];let p=pos(e);sx=lx=p.x;sy=ly=p.y;down=true}
+function randomColor(){color.value='#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');}
+function pixel(p){let s=pixelSize;let px=Math.floor(p.x/s)*s,py=Math.floor(p.y/s)*s;setup();x.fillRect(px,py,s,s)}
+function neonLine(a,b){x.save();x.globalCompositeOperation='lighter';x.globalAlpha=+alpha.value/100;x.shadowColor=color.value;x.shadowBlur=25;x.strokeStyle=color.value;x.lineWidth=+size.value;x.beginPath();x.moveTo(a.x,a.y);x.lineTo(b.x,b.y);x.stroke();x.shadowBlur=8;x.stroke();x.restore()}
+function fillAt(p){
+  let w=c.width,hgt=c.height,ix=Math.floor(p.x),iy=Math.floor(p.y);
+  if(ix<0||iy<0||ix>=w||iy>=hgt)return;
+  let img=x.getImageData(0,0,w,hgt),d=img.data,idx=(iy*w+ix)*4;
+  let target=[d[idx],d[idx+1],d[idx+2],d[idx+3]];
+  let rgb=parseInt(color.value.slice(1),16),fill=[rgb>>16,(rgb>>8)&255,rgb&255,Math.round(+alpha.value*2.55)];
+  if(target.every((v,i)=>Math.abs(v-fill[i])<2))return;
+  let stack=[[ix,iy]],seen=new Uint8Array(w*hgt);
+  function same(n){return Math.abs(d[n]-target[0])<8&&Math.abs(d[n+1]-target[1])<8&&Math.abs(d[n+2]-target[2])<8&&Math.abs(d[n+3]-target[3])<8}
+  while(stack.length){let q=stack.pop(),px=q[0],py=q[1];if(px<0||py<0||px>=w||py>=hgt)continue;let k=py*w+px;if(seen[k])continue;seen[k]=1;let n=k*4;if(!same(n))continue;d[n]=fill[0];d[n+1]=fill[1];d[n+2]=fill[2];d[n+3]=fill[3];stack.push([px+1,py],[px-1,py],[px,py+1],[px,py-1]);}
+  x.putImageData(img,0,0);
+}
+function start(e){e.preventDefault();h.push(state());if(h.length>30)h.shift();f=[];let p=pos(e);lx=p.x;ly=p.y;down=true;
+  if(tool==='pixel'){pixel(p);down=false}
+  else if(tool==='fill'){fillAt(p);down=false}
+}
 function move(e){if(!down)return;e.preventDefault();let p=pos(e);setup();
+ if(tool==='neon'){neonLine({x:lx,y:ly},p);lx=p.x;ly=p.y;return}
  if(tool==='brush'||tool==='eraser'){x.globalCompositeOperation=tool==='eraser'?'destination-out':'source-over';x.beginPath();x.moveTo(lx,ly);x.lineTo(p.x,p.y);x.stroke();x.globalCompositeOperation='source-over';lx=p.x;ly=p.y;return}
- restore(h[h.length-1]);setup();
- if(tool==='line'){x.beginPath();x.moveTo(sx,sy);x.lineTo(p.x,p.y);x.stroke()}
- if(tool==='rect')x.strokeRect(sx,sy,p.x-sx,p.y-sy);
- if(tool==='circle'){let rx=(p.x-sx)/2,ry=(p.y-sy)/2;x.beginPath();x.ellipse(sx+rx,sy+ry,Math.abs(rx),Math.abs(ry),0,0,Math.PI*2);x.stroke()}
 }
 function end(){down=false}
 function addText(){let t=prompt('텍스트를 입력하세요');if(!t)return;h.push(state());setup();x.font=(+size.value*4)+'px Arial';x.fillText(t,50,100)}
-function undo(){if(!h.length)return;f.push(state());let s=h.pop();if(h.length)restore(s);else{ x.clearRect(0,0,c.width,c.height);x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}}
+function undo(){if(!h.length)return;f.push(state());let s=h.pop();if(h.length)restore(s);else resetBackground()}
 function redo(){if(!f.length)return;h.push(state());restore(f.pop())}
-function clearCanvas(){h.push(state());f=[];x.clearRect(0,0,c.width,c.height);x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}
+function clearCanvas(){h.push(state());f=[];resetBackground()}
 async function finish(){let r=await fetch('/draw/'+sid+'/finish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:state()})});let j=await r.json();alert(j.ok?'Discord 채널에 업로드했습니다!':(j.error||'업로드 실패'))}
 c.addEventListener('pointerdown',start);c.addEventListener('pointermove',move);c.addEventListener('pointerup',end);c.addEventListener('pointercancel',end);
 </script></body></html>
@@ -1233,24 +1255,31 @@ async def 그림(interaction: discord.Interaction):
     view.add_item(discord.ui.Button(label="🎨 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
     await interaction.response.send_message(f"🎨 {interaction.user.mention}님, 그림판을 열었어요!",view=view)
 
-@bot.tree.command(name="그림대회",description="그림대회용 그림판을 엽니다.")
-async def 그림대회(interaction: discord.Interaction):
-    if interaction.guild is None:
-        return await interaction.response.send_message("❌ 서버에서 사용해 주세요.",ephemeral=True)
-    cleanup_draw_sessions()
-    sid=secrets.token_urlsafe(32)
-    draw_sessions[sid]={"guild_id":interaction.guild.id,"channel_id":interaction.channel.id,"user_id":interaction.user.id,"created":time.time()}
-    view=discord.ui.View()
-    view.add_item(discord.ui.Button(label="🏆 그림대회 그림판 열기",style=discord.ButtonStyle.link,url=f"{DRAW_URL}/draw/{sid}"))
-    await interaction.response.send_message(f"🏆 {interaction.user.mention}님, 그림대회 그림판을 열었어요!",view=view)
-
 @bot.event
 async def on_ready():
     try:
-        synced=await bot.tree.sync()
-        print(f"✅ {bot.user} 연결 완료! {len(synced)}개 명령어 동기화됨")
+        # 이전에 만들어진 서버 전용 명령어를 먼저 정리해 중복 표시를 막습니다.
+        cleared = 0
+        for guild in bot.guilds:
+            try:
+                bot.tree.clear_commands(guild=guild)
+                await bot.tree.sync(guild=guild)
+                cleared += 1
+            except Exception as guild_error:
+                print(f"⚠️ {guild.name} 서버 명령어 정리 실패: {guild_error}")
+
+        synced = await bot.tree.sync()
+        print(
+            f"✅ {bot.user} 연결 완료! "
+            f"기존 서버 명령어 {cleared}개 정리 / "
+            f"전역 명령어 {len(synced)}개 동기화"
+        )
     except Exception as e:
         print(f"❌ 명령어 동기화 오류: {e}")
+    if not getattr(bot,"_music_view_started",False):
+        bot._music_view_started=True
+        bot.add_view(MusicPlayerView())
+        print("🎶 음악 플레이어 버튼 활성화")
     if not getattr(bot,"_draw_started",False):
         bot._draw_started=True
         threading.Thread(target=run_draw_server,daemon=True).start()
