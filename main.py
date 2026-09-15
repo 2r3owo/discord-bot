@@ -20,6 +20,8 @@ import time
 import json
 import uuid
 from pathlib import Path
+from discord import app_commands
+from datetime import date
 
 # 초성을 추출하는 함수
 def get_chosung(text):
@@ -2641,48 +2643,57 @@ async def on_ready():
         threading.Thread(target=run_draw_server,daemon=True).start()
         print(f"🎨 그림판 서버 시작: {DRAW_URL}")
 
-
-# =====================
-# 서버별 디데이 기능
-# 시작 당일 = D+1
-# =====================
 DDAY_FILE = "dday_data.json"
 dday_data = {}
+dday_lock = asyncio.Lock()
 
 
 def load_dday_data():
     global dday_data
+
     if not os.path.exists(DDAY_FILE):
         dday_data = {}
         return
+
     try:
-        with open(DDAY_FILE, "r", encoding="utf-8") as f:
-            dday_data = json.load(f)
-    except Exception as e:
-        print(f"⚠️ 디데이 데이터 불러오기 실패: {e}")
+        with open(DDAY_FILE, "r", encoding="utf-8") as file:
+            dday_data = json.load(file)
+    except Exception as error:
+        print(f"디데이 데이터 불러오기 실패: {error}")
         dday_data = {}
 
 
 def save_dday_data():
     try:
-        with open(DDAY_FILE, "w", encoding="utf-8") as f:
-            json.dump(dday_data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"⚠️ 디데이 데이터 저장 실패: {e}")
+        with open(DDAY_FILE, "w", encoding="utf-8") as file:
+            json.dump(dday_data, file, ensure_ascii=False, indent=2)
+    except Exception as error:
+        print(f"디데이 데이터 저장 실패: {error}")
 
 
 def get_dday_text(start_date_text):
-    start_date = datetime.strptime(start_date_text, "%Y-%m-%d").date()
-    today = now_kst().date()
-    days = (today - start_date).days + 1
-    if days >= 1:
-        return f"D+{days}"
-    return f"D{days - 1}"
+    start_date = datetime.strptime(
+        start_date_text,
+        "%Y-%m-%d"
+    ).date()
+
+    today = date.today()
+    difference = (today - start_date).days
+
+    # 시작 당일 D+1
+    if difference >= 0:
+        return f"D+{difference + 1}"
+
+    # 시작 전
+    return f"D-{abs(difference)}"
 
 
-@bot.tree.command(name="디데이등록", description="이 서버에 디데이를 등록합니다.")
+@bot.tree.command(
+    name="디데이등록",
+    description="서버에 디데이를 등록합니다."
+)
 @app_commands.describe(
-    날짜="시작 날짜를 YYYY-MM-DD 형식으로 입력",
+    날짜="YYYY-MM-DD 형식의 시작 날짜",
     제목="디데이 제목",
     알림채널="매일 알림을 보낼 채널",
     매일알림="매일 알림 여부"
@@ -2701,118 +2712,182 @@ async def 디데이등록(
     매일알림: app_commands.Choice[str]
 ):
     if interaction.guild is None:
-        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ 서버에서만 사용할 수 있어요.",
+            ephemeral=True
+        )
 
     try:
         datetime.strptime(날짜, "%Y-%m-%d")
     except ValueError:
         return await interaction.response.send_message(
-            "❌ 날짜는 `2026-09-15` 형식으로 입력해 주세요.",
+            "❌ 날짜는 `2026-09-15`처럼 입력해 주세요.",
             ephemeral=True
         )
 
-    제목 = 제목.strip()
-    if not 제목:
-        return await interaction.response.send_message("❌ 제목을 입력해 주세요.", ephemeral=True)
+    if not 제목.strip():
+        return await interaction.response.send_message(
+            "❌ 제목을 입력해 주세요.",
+            ephemeral=True
+        )
 
     guild_id = str(interaction.guild.id)
-    dday_data[guild_id] = {
-        "date": 날짜,
-        "title": 제목,
-        "channel_id": 알림채널.id,
-        "daily_notice": 매일알림.value == "on",
-        "last_notice": ""
-    }
-    save_dday_data()
+
+    async with dday_lock:
+        dday_data[guild_id] = {
+            "date": 날짜,
+            "title": 제목.strip(),
+            "channel_id": 알림채널.id,
+            "daily_notice": 매일알림.value == "on",
+            "last_notice": ""
+        }
+
+        save_dday_data()
 
     await interaction.response.send_message(
         f"✅ 디데이를 등록했어요!\n"
-        f"💕 **{제목}**\n"
+        f"💕 제목: **{제목.strip()}**\n"
         f"📅 시작일: `{날짜}`\n"
-        f"📌 현재: **{get_dday_text(날짜)}**\n"
+        f"⏳ 현재: **{get_dday_text(날짜)}**\n"
         f"🔔 매일 알림: **{'켜짐' if 매일알림.value == 'on' else '꺼짐'}**\n"
         f"📢 알림 채널: {알림채널.mention}"
     )
 
 
-@bot.tree.command(name="디데이", description="이 서버의 디데이를 확인합니다.")
+@bot.tree.command(
+    name="디데이",
+    description="현재 서버의 디데이를 확인합니다."
+)
 async def 디데이(interaction: discord.Interaction):
     if interaction.guild is None:
-        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ 서버에서만 사용할 수 있어요.",
+            ephemeral=True
+        )
 
-    info = dday_data.get(str(interaction.guild.id))
+    guild_id = str(interaction.guild.id)
+    info = dday_data.get(guild_id)
+
     if not info:
-        return await interaction.response.send_message("❌ 이 서버에는 등록된 디데이가 없어요.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ 이 서버에는 등록된 디데이가 없어요.",
+            ephemeral=True
+        )
 
     await interaction.response.send_message(
         f"💕 **{info['title']}**\n"
         f"📅 시작일: `{info['date']}`\n"
         f"⏳ 현재: **{get_dday_text(info['date'])}**\n"
-        f"🔔 매일 알림: **{'켜짐' if info.get('daily_notice') else '꺼짐'}**",
+        f"🔔 매일 알림: **{'켜짐' if info['daily_notice'] else '꺼짐'}**",
         ephemeral=True
     )
 
 
-@bot.tree.command(name="디데이삭제", description="이 서버의 디데이를 삭제합니다.")
+@bot.tree.command(
+    name="디데이삭제",
+    description="현재 서버의 디데이를 삭제합니다."
+)
 async def 디데이삭제(interaction: discord.Interaction):
     if interaction.guild is None:
-        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ 서버에서만 사용할 수 있어요.",
+            ephemeral=True
+        )
 
     guild_id = str(interaction.guild.id)
-    if guild_id not in dday_data:
-        return await interaction.response.send_message("❌ 삭제할 디데이가 없어요.", ephemeral=True)
 
-    dday_data.pop(guild_id, None)
-    save_dday_data()
-    await interaction.response.send_message("✅ 이 서버의 디데이를 삭제했어요.", ephemeral=True)
+    async with dday_lock:
+        if guild_id not in dday_data:
+            return await interaction.response.send_message(
+                "❌ 삭제할 디데이가 없어요.",
+                ephemeral=True
+            )
+
+        del dday_data[guild_id]
+        save_dday_data()
+
+    await interaction.response.send_message(
+        "✅ 이 서버의 디데이를 삭제했어요.",
+        ephemeral=True
+    )
 
 
-@bot.tree.command(name="디데이알림", description="이 서버 디데이의 매일 알림을 켜거나 끕니다.")
-@app_commands.describe(설정="알림 켜기 또는 끄기")
+@bot.tree.command(
+    name="디데이알림",
+    description="현재 서버 디데이 알림을 켜거나 끕니다."
+)
+@app_commands.describe(설정="알림 설정")
 @app_commands.choices(
     설정=[
         app_commands.Choice(name="켜기", value="on"),
         app_commands.Choice(name="끄기", value="off")
     ]
 )
-async def 디데이알림(interaction: discord.Interaction, 설정: app_commands.Choice[str]):
+async def 디데이알림(
+    interaction: discord.Interaction,
+    설정: app_commands.Choice[str]
+):
     if interaction.guild is None:
-        return await interaction.response.send_message("❌ 서버에서만 사용할 수 있어요.", ephemeral=True)
+        return await interaction.response.send_message(
+            "❌ 서버에서만 사용할 수 있어요.",
+            ephemeral=True
+        )
 
-    info = dday_data.get(str(interaction.guild.id))
-    if not info:
-        return await interaction.response.send_message("❌ 먼저 디데이를 등록해 주세요.", ephemeral=True)
+    guild_id = str(interaction.guild.id)
 
-    info["daily_notice"] = 설정.value == "on"
-    save_dday_data()
+    async with dday_lock:
+        info = dday_data.get(guild_id)
+
+        if not info:
+            return await interaction.response.send_message(
+                "❌ 먼저 디데이를 등록해 주세요.",
+                ephemeral=True
+            )
+
+        info["daily_notice"] = 설정.value == "on"
+        save_dday_data()
+
     await interaction.response.send_message(
-        f"✅ 매일 디데이 알림을 **{'켜짐' if 설정.value == 'on' else '꺼짐'}**으로 변경했어요.",
+        f"✅ 디데이 매일 알림을 "
+        f"**{'켜짐' if 설정.value == 'on' else '꺼짐'}**으로 변경했어요.",
         ephemeral=True
     )
 
 
 @tasks.loop(minutes=1)
 async def dday_daily_notice():
-    now = now_kst()
-    today_text = now.strftime("%Y-%m-%d")
+    now = datetime.now()
 
+    # 매일 오전 9시에 알림
     if now.hour != 9 or now.minute != 0:
         return
 
-    for guild_id, info in list(dday_data.items()):
-        if not info.get("daily_notice") or info.get("last_notice") == today_text:
-            continue
+    today_text = now.strftime("%Y-%m-%d")
 
-        channel = bot.get_channel(info.get("channel_id"))
-        if channel is None:
-            continue
+    async with dday_lock:
+        for guild_id, info in list(dday_data.items()):
+            if not info.get("daily_notice"):
+                continue
 
-        try:
-            await channel.send(f"💕 **{info['title']}**\n오늘은 **{get_dday_text(info['date'])}**이에요!")
-            info["last_notice"] = today_text
-            save_dday_data()
-        except Exception as e:
-            print(f"⚠️ 디데이 알림 실패: {e}")
+            if info.get("last_notice") == today_text:
+                continue
+
+            channel = bot.get_channel(info.get("channel_id"))
+
+            if channel is None:
+                continue
+
+            try:
+                await channel.send(
+                    f"💕 **{info['title']}**\n"
+                    f"오늘은 **{get_dday_text(info['date'])}**이에요!"
+                )
+
+                info["last_notice"] = today_text
+                save_dday_data()
+
+            except Exception as error:
+                print(f"디데이 알림 오류: {error}")
 
 
 @dday_daily_notice.before_loop
