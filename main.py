@@ -2163,80 +2163,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
             await interaction.response.send_message("🚫 이 명령어를 사용하려면 **메시지 관리** 권한이 필요합니다!", ephemeral=True)
     else:
         print(f"Error: {error}")
-
-# =====================
-# 명령어: 야도와줘 (슬래시 커맨드 통합 버전)
-# =====================
-@bot.tree.command(name="야도와줘", description="봇의 모든 명령어 목록을 확인합니다.")
-async def help_command(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="🤖 봇 명령어 가이드",
-        description="이 봇의 데이터(돈, 낚시 등)는 **각 서버별로 독립적으로 관리**됩니다.",
-        color=0x3498db
-    )
-
-    # 일상 & 운세
-    embed.add_field(
-        name="🔮 일상 & 운세",
-        value="`/오늘의운세`: 하루 한 번 나의 운세를 확인합니다.\n"
-              "`/궁합 @상대방`: 멘션한 유저와 오늘의 궁합을 봅니다.",
-        inline=False
-    )
-
-    # 경제 시스템 (수정 및 추가됨)
-    embed.add_field(
-        name="💰 경제 & 낚시",
-        value="`/돈내놔`: 하루 3회, 이 서버 전용 지원금을 받습니다.\n"
-              "`/잔고`: 이 서버의 지갑에 있는 돈을 확인합니다.\n"
-              "`/낚시`: 물고기를 잡아 보관함에 저장합니다.\n"
-              "`/보관함`: 이 서버에서 잡은 내 물고기 목록을 봅니다.\n"
-              "`/가격표`: 어떤 물고기가 비싼지 시세를 확인합니다. (신규)\n"
-              "`/팔기`: 물고기를 판매합니다. (이름/갯수를 넣으면 골라서 판매 가능!)\n"
-              "`/사냥`: 동물들을 잡아 돈을 얻습니다.\n"
-              "`/그림`: 웹 그림판을 열고 완성한 그림을 이 채널에 올립니다.\n"
-              "`/그림대회`: 그림대회용 그림판을 엽니다.\n",
-        inline=False
-    )
-
-    # 도박 시스템
-    embed.add_field(
-        name="🎰 도박",
-        value="`/홀짝 [금액] [홀/짝]`: 홀짝을 맞춰 돈을 두 배로!\n"
-              "`/도박 [금액]`: 45% 확률로 배팅금의 2배를 얻습니다.\n"
-              "`/로또`: 1,000원으로 인생 역전! (서버당 하루 15회)",
-        inline=False
-    )
-
-    # 관리 기능
-    embed.add_field(
-        name="🛠️ 관리 기능",
-        value="`/야청소해 [숫자/전부]`: 메시지를 깔끔하게 지웁니다. (최대 999개)",
-        inline=False
-    )
-
-    # 음악 시스템
-    embed.add_field(
-        name="🎶 음악 재생",
-        value="`/야드루와`: 봇을 내 음성 채널로 부릅니다.\n"
-              "`/야재생해 [검색어/URL]`: 노래를 즉시 재생합니다.\n"
-              "`/야기다려 [검색어]`: 노래를 대기열에 추가합니다.\n"
-              "`/야목록`: 현재 대기열 목록을 확인합니다.\n"
-              "`/야멈춰`: 중지 / `/야넘겨`: 다음 곡 / `/야꺼져`: 퇴장\n"
-              "음악 패널에서 멜론 TOP100·최신곡·즐겨찾기도 사용할 수 있어요.",
-        inline=False
-    )
-
-    # 푸터 설정
-    embed.set_footer(
-        text=f"요청자: {interaction.user.display_name} | 데이터는 서버별로 저장됩니다.", 
-        icon_url=interaction.user.display_avatar.url
-    )
-    
-    await interaction.response.send_message(embed=embed)
-
-
-# =====================
-
+        
 # =====================
 # 🎡 결정 룰렛
 # =====================
@@ -2891,6 +2818,23 @@ async def before_dday_daily_notice():
 
 
 load_dday_data()
+
+# =====================
+# 명령어: 야도와줘
+# =====================
+@bot.tree.command(
+    name="야도와줘",
+    description="봇의 모든 명령어 목록을 확인합니다."
+)
+async def help_command(interaction: discord.Interaction):
+    help_image = discord.File(
+        "야도와줘.png",
+        filename="야도와줘.png"
+    )
+
+    await interaction.response.send_message(
+        file=help_image
+    )
 
 # =====================
 # 실행
