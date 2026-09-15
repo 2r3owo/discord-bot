@@ -2832,9 +2832,7 @@ async def help_command(interaction: discord.Interaction):
         filename="야도와줘.png"
     )
 
-    await interaction.response.send_message(
-        file=help_image
-    )
+    await interaction.response.send_message(file=help_image)
 
 # =====================
 # 실행
