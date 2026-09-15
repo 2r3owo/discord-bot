@@ -2827,12 +2827,23 @@ load_dday_data()
     description="봇의 모든 명령어 목록을 확인합니다."
 )
 async def help_command(interaction: discord.Interaction):
+    image_path = Path(__file__).resolve().parent / "야도와줘.png"
+
+    if not image_path.exists():
+        await interaction.response.send_message(
+            "❌ 야도와줘.png 파일을 찾을 수 없습니다.",
+            ephemeral=True
+        )
+        return
+
     help_image = discord.File(
-        "야도와줘.png",
+        str(image_path),
         filename="야도와줘.png"
     )
 
-    await interaction.response.send_message(file=help_image)
+    await interaction.response.send_message(
+        file=help_image
+    )
 
 # =====================
 # 실행
