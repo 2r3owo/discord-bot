@@ -2133,6 +2133,271 @@ async def 야목록(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # =====================
+# 멜론 플레이리스트 버튼 기능
+# =====================
+
+class MelonPlaylistModal(discord.ui.Modal, title="멜론 플레이리스트 재생"):
+    playlist_input = discord.ui.TextInput(
+        label="멜론 플리 링크 또는 검색어",
+        placeholder="멜론 플리 링크 또는 플레이리스트 이름 입력",
+        required=True,
+        max_length=300
+    )
+
+    def __init__(self, mode="my"):
+        super().__init__()
+        self.mode = mode
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if not interaction.user.voice:
+            return await interaction.response.send_message(
+                "❌ 먼저 음성채널에 들어가 주세요.",
+                ephemeral=True
+            )
+
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        value = str(self.playlist_input.value).strip()
+
+        try:
+            if not guild.voice_client:
+                await interaction.user.voice.channel.connect(
+                    timeout=60.0,
+                    reconnect=True
+                )
+            elif guild.voice_client.channel != interaction.user.voice.channel:
+                await guild.voice_client.move_to(interaction.user.voice.channel)
+
+            tracks = await asyncio.to_thread(
+                get_melon_playlist_tracks,
+                value
+            )
+
+            if not tracks:
+                return await interaction.followup.send(
+                    "❌ 플레이리스트에서 곡을 찾지 못했어요.",
+                    ephemeral=True
+                )
+
+            queues.setdefault(guild.id, deque())
+
+            await interaction.followup.send(
+                f"⏳ 플레이리스트에서 **{len(tracks)}곡**을 준비하고 있어요.",
+                ephemeral=True
+            )
+
+            asyncio.create_task(
+                play_playlist_in_background(
+                    guild,
+                    interaction.channel,
+                    tracks
+                )
+            )
+
+        except Exception as e:
+            print(f"❌ 멜론 플레이리스트 오류: {e!r}")
+            await interaction.followup.send(
+                f"❌ 플레이리스트를 불러오지 못했어요.\n`{e}`",
+                ephemeral=True
+            )
+
+
+def get_melon_playlist_tracks(value, limit=50):
+    """
+    멜론 공개 플레이리스트 링크 또는 검색어에서 곡 목록을 가져옵니다.
+    멜론 비공개 개인 플리는 로그인 없이는 가져올 수 없습니다.
+    """
+
+    value = value.strip()
+
+    ydl_options = {
+        "quiet": True,
+        "no_warnings": True,
+        "extract_flat": True,
+        "skip_download": True,
+        "noplaylist": False,
+        "default_search": "ytsearch",
+        "socket_timeout": 30,
+    }
+
+    # 멜론 링크는 HTML에서 곡 제목/가수를 추출합니다.
+    if "melon.com" in value:
+        req = Request(
+            value,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 "
+                    "(Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 "
+                    "Chrome/131 Safari/537.36"
+                )
+            }
+        )
+
+        raw = urlopen(req, timeout=30).read().decode(
+            "utf-8",
+            errors="ignore"
+        )
+
+        tracks = []
+        seen = set()
+
+        # 멜론 곡 제목과 가수 정보 추출
+        pattern = re.compile(
+            r'class="(?:song|rank01|song_name)[^"]*"[^>]*>'
+            r'.*?<a[^>]*>(.*?)</a>'
+            r'.{0,1200}?'
+            r'class="(?:artist|rank02|artist_name)[^"]*"[^>]*>'
+            r'.*?<a[^>]*>(.*?)</a>',
+            re.S | re.I
+        )
+
+        for title, artist in pattern.findall(raw):
+            title = _clean_chart_text(title)
+            artist = _clean_chart_text(artist)
+
+            if not title or not artist:
+                continue
+
+            key = (title, artist)
+
+            if key in seen:
+                continue
+
+            seen.add(key)
+
+            tracks.append({
+                "title": title,
+                "artist": artist,
+                "query": f"{title} {artist}"
+            })
+
+            if len(tracks) >= limit:
+                break
+
+        if tracks:
+            return tracks
+
+        raise RuntimeError(
+            "멜론 페이지에서 곡 목록을 읽지 못했어요. "
+            "공개 플레이리스트 링크인지 확인해 주세요."
+        )
+
+    # 링크가 아니면 YouTube에서 플레이리스트 검색
+    search_query = f"ytsearch10:{value} 플레이리스트"
+
+    with yt_dlp.YoutubeDL(ydl_options) as ydl:
+        info = ydl.extract_info(search_query, download=False)
+
+    entries = info.get("entries", []) if info else []
+    tracks = []
+
+    for entry in entries:
+        if not entry:
+            continue
+
+        entry_url = (
+            entry.get("webpage_url")
+            or entry.get("url")
+        )
+
+        if not entry_url:
+            continue
+
+        # 검색 결과가 플레이리스트면 내부 곡을 가져옵니다.
+        try:
+            with yt_dlp.YoutubeDL(ydl_options) as ydl:
+                playlist_info = ydl.extract_info(
+                    entry_url,
+                    download=False
+                )
+
+            playlist_entries = (
+                playlist_info.get("entries", [])
+                if playlist_info
+                else []
+            )
+
+            for song in playlist_entries:
+                if not song:
+                    continue
+
+                title = song.get("title") or ""
+                webpage_url = (
+                    song.get("webpage_url")
+                    or song.get("url")
+                )
+
+                if not title or not webpage_url:
+                    continue
+
+                tracks.append({
+                    "title": title,
+                    "artist": "",
+                    "query": webpage_url
+                })
+
+                if len(tracks) >= limit:
+                    return tracks
+
+        except Exception as e:
+            print(f"⚠️ 플레이리스트 검색 결과 건너뜀: {e!r}")
+
+    return tracks[:limit]
+
+
+async def play_playlist_in_background(guild, channel, tracks):
+    gid = guild.id
+    queues.setdefault(gid, deque())
+
+    added = 0
+
+    for track in tracks:
+        try:
+            filepath, title, thumbnail, webpage_url = await asyncio.to_thread(
+                download_song,
+                track["query"],
+                gid
+            )
+
+            song = {
+                "filepath": filepath,
+                "title": title or track["title"],
+                "query": track["query"],
+                "thumbnail": thumbnail or "",
+                "webpage_url": webpage_url or ""
+            }
+
+            if not guild.voice_client:
+                _cleanup_file(filepath)
+                break
+
+            if (
+                guild.voice_client.is_playing()
+                or guild.voice_client.is_paused()
+                or music_current_song.get(gid)
+            ):
+                queues[gid].append(song)
+            else:
+                _play_song_now(guild, song, channel)
+
+            added += 1
+
+            if added % 5 == 0:
+                print(f"🎵 플레이리스트 {added}곡 준비 완료")
+
+        except Exception as e:
+            print(
+                f"⚠️ 플레이리스트 곡 건너뜀: "
+                f"{track.get('title', '')} / {e!r}"
+            )
+
+    await update_music_status(guild, channel)
+
+    print(f"✅ 플레이리스트 재생 준비 완료: {added}곡")
+
+# =====================
 # 명령어: 야청소해 (슬래시 커맨드 버전)
 # =====================
 from discord import app_commands # 상단에 추가되어 있는지 확인하세요
